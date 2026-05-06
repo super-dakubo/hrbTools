@@ -137,9 +137,27 @@ fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
     }
 }
 
+#[tauri::command]
+fn get_config(app: tauri::AppHandle) -> AppConfig {
+    load_config(&app)
+}
+
+#[tauri::command]
+fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
+    save_config(&app, &config);
+    OpResult {
+        success: true,
+        message: "配置已保存".to_string(),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![convert_to_timestamp])
+        .invoke_handler(tauri::generate_handler![
+            convert_to_timestamp,
+            get_config,
+            set_config
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
