@@ -8,33 +8,91 @@
 </head>
 <body>
     <div class="container">
-        <h1>⏰ 时间字符串 → Unix时间戳</h1>
-        
-        <div class="input-group">
-            <label>时间字符串</label>
-            <input type="text" id="datetimeInput" placeholder="例如: 2025-04-04 15:30:00" value="2025-04-04 15:30:00">
+
+        <!-- Tab 栏 -->
+        <div class="tab-bar">
+            <button class="tab active" data-tab="convert">时间转换</button>
+            <button class="tab" data-tab="backup">存档管理</button>
         </div>
 
-        <div class="input-group">
-            <label>时区</label>
-            <select id="timezoneSelect">
-                <option value="UTC">UTC</option>
-                <option value="Asia/Shanghai" selected>Asia/Shanghai (中国标准时间)</option>
-                <option value="America/New_York">America/New_York (美国东部时间)</option>
-                <option value="Europe/London">Europe/London (伦敦时间)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
-                <option value="Australia/Sydney">Australia/Sydney (悉尼时间)</option>
-            </select>
+        <!-- ==================== 时间转换面板 ==================== -->
+        <div class="panel active" id="panel-convert">
+            <h1>时间字符串 → Unix时间戳</h1>
+
+            <div class="input-group">
+                <label>时间字符串</label>
+                <input type="text" id="datetimeInput" placeholder="例如: 2025-04-04 15:30:00" value="2025-04-04 15:30:00">
+            </div>
+
+            <div class="input-group">
+                <label>时区</label>
+                <select id="timezoneSelect">
+                    <option value="UTC">UTC</option>
+                    <option value="Asia/Shanghai" selected>Asia/Shanghai (中国标准时间)</option>
+                    <option value="America/New_York">America/New_York (美国东部时间)</option>
+                    <option value="Europe/London">Europe/London (伦敦时间)</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
+                    <option value="Australia/Sydney">Australia/Sydney (悉尼时间)</option>
+                </select>
+            </div>
+
+            <button id="convertBtn">转换</button>
+
+            <div class="result">
+                <label>Unix时间戳 (秒)</label>
+                <div id="timestampResult">—</div>
+            </div>
+
+            <div id="errorMsg" class="error"></div>
         </div>
 
-        <button id="convertBtn">转换</button>
+        <!-- ==================== 存档管理面板 ==================== -->
+        <div class="panel" id="panel-backup">
+            <h1>游戏存档备份</h1>
 
-        <div class="result">
-            <label>Unix时间戳 (秒)</label>
-            <div id="timestampResult">—</div>
+            <!-- 游戏选择 -->
+            <div class="input-group">
+                <label>选择游戏</label>
+                <div class="row">
+                    <select id="gameSelect">
+                        <option value="">— 请先新增游戏 —</option>
+                    </select>
+                    <button id="addGameBtn" class="btn-small">+</button>
+                </div>
+            </div>
+
+            <!-- 文件选择 -->
+            <div class="input-group">
+                <label>存档文件</label>
+                <div class="row">
+                    <input type="text" id="filePath" placeholder="输入路径或点击浏览...">
+                    <button id="browseFileBtn" class="btn-small">浏览</button>
+                </div>
+            </div>
+
+            <!-- 备份目录 + 保存按钮 -->
+            <div class="input-group">
+                <label>备份位置</label>
+                <div class="row backup-path-row">
+                    <span id="backupRootDisplay" class="path-hint">未设置</span>
+                    <button id="setBackupDirBtn" class="btn-small">设置目录</button>
+                </div>
+            </div>
+
+            <button id="saveBackupBtn">保存存档</button>
+
+            <div id="backupError" class="error"></div>
+            <div id="backupSuccess" class="success"></div>
+
+            <!-- 存档列表 -->
+            <div class="backup-list-section">
+                <h3>存档列表</h3>
+                <div id="backupList" class="backup-list">
+                    <div class="empty-hint">请先选择游戏</div>
+                </div>
+            </div>
         </div>
 
-        <div id="errorMsg" class="error"></div>
     </div>
 
     <script type="module" src="main.js"></script>
