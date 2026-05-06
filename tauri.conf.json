@@ -1,0 +1,27 @@
+{
+  "productName": "hrbTools",
+  "version": "0.1.0",
+  "identifier": "com.hrbTools.app",
+  "build": {
+    "frontendDist": "./src",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "bundle": {
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "时间转换工具",
+        "width": 600,
+        "height": 500
+      }
+    ]
+  }
+}

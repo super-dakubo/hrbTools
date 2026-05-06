@@ -151,12 +151,28 @@ fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
     }
 }
 
+#[tauri::command]
+fn pick_file() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_file()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn pick_directory() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             convert_to_timestamp,
             get_config,
-            set_config
+            set_config,
+            pick_file,
+            pick_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

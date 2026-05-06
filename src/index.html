@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间转换工具</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>⏰ 时间字符串 → Unix时间戳</h1>
+        
+        <div class="input-group">
+            <label>时间字符串</label>
+            <input type="text" id="datetimeInput" placeholder="例如: 2025-04-04 15:30:00" value="2025-04-04 15:30:00">
+        </div>
+
+        <div class="input-group">
+            <label>时区</label>
+            <select id="timezoneSelect">
+                <option value="UTC">UTC</option>
+                <option value="Asia/Shanghai" selected>Asia/Shanghai (中国标准时间)</option>
+                <option value="America/New_York">America/New_York (美国东部时间)</option>
+                <option value="Europe/London">Europe/London (伦敦时间)</option>
+                <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
+                <option value="Australia/Sydney">Australia/Sydney (悉尼时间)</option>
+            </select>
+        </div>
+
+        <button id="convertBtn">转换</button>
+
+        <div class="result">
+            <label>Unix时间戳 (秒)</label>
+            <div id="timestampResult">—</div>
+        </div>
+
+        <div id="errorMsg" class="error"></div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
