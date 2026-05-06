@@ -1,3 +1,4 @@
+/* ==================== 基础重置 ==================== */
 * {
     box-sizing: border-box;
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -19,34 +20,82 @@ body {
     box-shadow: 0 8px 20px rgba(0,0,0,0.1);
     padding: 2rem;
     width: 100%;
-    max-width: 500px;
+    max-width: 520px;
 }
 
-h1 {
-    font-size: 1.6rem;
-    margin-top: 0;
+/* ==================== Tab 栏 ==================== */
+.tab-bar {
+    display: flex;
+    gap: 0;
     margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.tab {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #6b7280;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+    border-radius: 0;
+}
+
+.tab:hover {
+    color: #374151;
+}
+
+.tab.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+}
+
+/* ==================== 面板 ==================== */
+.panel {
+    display: none;
+}
+
+.panel.active {
+    display: block;
+}
+
+/* ==================== 共用组件 ==================== */
+h1 {
+    font-size: 1.4rem;
+    margin-top: 0;
+    margin-bottom: 1.2rem;
     text-align: center;
     color: #1f2937;
 }
 
+h3 {
+    font-size: 1rem;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
 .input-group {
-    margin-bottom: 1.2rem;
+    margin-bottom: 1rem;
 }
 
 label {
     display: block;
     font-weight: 600;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
     color: #374151;
 }
 
 input, select {
     width: 100%;
-    padding: 0.7rem 1rem;
+    padding: 0.6rem 0.8rem;
     border: 1px solid #d1d5db;
-    border-radius: 12px;
-    font-size: 1rem;
+    border-radius: 10px;
+    font-size: 0.95rem;
     transition: 0.2s;
 }
 
@@ -61,21 +110,56 @@ button {
     color: white;
     border: none;
     width: 100%;
-    padding: 0.8rem;
+    padding: 0.7rem;
     font-size: 1rem;
     font-weight: 600;
     border-radius: 40px;
     cursor: pointer;
     transition: background 0.2s;
-    margin-top: 0.5rem;
+    margin-top: 0.3rem;
 }
 
 button:hover {
     background: #2563eb;
 }
 
+/* 行内布局（输入框+按钮） */
+.row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.row input,
+.row select {
+    flex: 1;
+}
+
+/* 小按钮 */
+.btn-small {
+    width: auto;
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    margin-top: 0;
+}
+
+/* 危险操作按钮 */
+.btn-danger {
+    background: #ef4444;
+    width: auto;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+    margin-top: 0;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+/* ==================== 时间转换面板 ==================== */
 .result {
-    margin-top: 1.5rem;
+    margin-top: 1.2rem;
     background: #f9fafb;
     border-radius: 16px;
     padding: 1rem;
@@ -95,13 +179,86 @@ button:hover {
     font-family: monospace;
 }
 
+/* ==================== 消息提示 ==================== */
 .error {
     color: #dc2626;
     background: #fee2e2;
-    border-radius: 12px;
-    padding: 0.6rem;
-    margin-top: 1rem;
+    border-radius: 10px;
+    padding: 0.5rem;
+    margin-top: 0.8rem;
     font-size: 0.9rem;
     text-align: center;
     display: none;
+}
+
+.success {
+    color: #16a34a;
+    background: #dcfce7;
+    border-radius: 10px;
+    padding: 0.5rem;
+    margin-top: 0.8rem;
+    font-size: 0.9rem;
+    text-align: center;
+    display: none;
+}
+
+/* ==================== 存档管理面板 ==================== */
+.path-hint {
+    color: #9ca3af;
+    font-size: 0.85rem;
+    padding: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.backup-path-row {
+    background: #f9fafb;
+    border-radius: 10px;
+    padding: 0.3rem 0.3rem 0.3rem 0.6rem;
+    border: 1px solid #e5e7eb;
+}
+
+/* ==================== 存档列表 ==================== */
+.backup-list-section {
+    margin-top: 1.5rem;
+}
+
+.backup-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.empty-hint {
+    text-align: center;
+    color: #9ca3af;
+    padding: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.backup-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.9rem;
+}
+
+.backup-item:hover {
+    background: #f9fafb;
+}
+
+.backup-item .name {
+    flex: 1;
+    color: #1f2937;
+}
+
+.backup-item .original-path {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
