@@ -238,6 +238,65 @@ fn create_backup(app: tauri::AppHandle, game_name: String, file_path: String) ->
     }
 }
 
+#[tauri::command]
+fn list_backups(app: tauri::AppHandle, game_name: String) -> Vec<BackupInfo> {
+    let config = load_config(&app);
+    let game_dir = PathBuf::from(&config.backup_root).join(&game_name);
+
+    if !game_dir.exists() {
+        return vec![];
+    }
+
+    let mut backups: Vec<BackupInfo> = match fs::read_dir(&game_dir) {
+        Ok(entries) => entries
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let folder_name = entry.file_name().to_string_lossy().to_string();
+
+                // 跳过非目录项
+                if !entry.file_type().ok()?.is_dir() {
+                    return None;
+                }
+
+                // 读取 meta.json
+                let meta_path = entry.path().join("meta.json");
+                let (display_name, original_file_path) = if meta_path.exists() {
+                    fs::read_to_string(&meta_path)
+                        .ok()
+                        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                        .map(|meta| {
+                            (
+                                meta["display_name"]
+                                    .as_str()
+                                    .unwrap_or(&folder_name)
+                                    .to_string(),
+                                meta["original_file_path"]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .to_string(),
+                            )
+                        })
+                        .unwrap_or_else(|| (folder_name.clone(), String::new()))
+                } else {
+                    (folder_name.clone(), String::new())
+                };
+
+                Some(BackupInfo {
+                    folder_name,
+                    display_name,
+                    created_at: String::new(),
+                    original_file_path,
+                })
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
+    // 按文件夹名倒序排列（最新的在前）
+    backups.sort_by(|a, b| b.folder_name.cmp(&a.folder_name));
+    backups
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -246,7 +305,8 @@ fn main() {
             set_config,
             pick_file,
             pick_directory,
-            create_backup
+            create_backup,
+            list_backups
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
