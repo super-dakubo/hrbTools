@@ -297,6 +297,154 @@ fn list_backups(app: tauri::AppHandle, game_name: String) -> Vec<BackupInfo> {
     backups
 }
 
+#[tauri::command]
+fn delete_backup(app: tauri::AppHandle, game_name: String, folder_name: String) -> OpResult {
+    let config = load_config(&app);
+    let backup_dir = PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&folder_name);
+
+    if !backup_dir.exists() {
+        return OpResult {
+            success: false,
+            message: "备份不存在".to_string(),
+        };
+    }
+
+    match fs::remove_dir_all(&backup_dir) {
+        Ok(_) => OpResult {
+            success: true,
+            message: "备份已删除".to_string(),
+        },
+        Err(e) => OpResult {
+            success: false,
+            message: format!("删除失败: {}", e),
+        },
+    }
+}
+
+#[tauri::command]
+fn rename_backup(
+    app: tauri::AppHandle,
+    game_name: String,
+    folder_name: String,
+    new_name: String,
+) -> OpResult {
+    let config = load_config(&app);
+    let game_dir = PathBuf::from(&config.backup_root).join(&game_name);
+    let old_path = game_dir.join(&folder_name);
+    let new_path = game_dir.join(&new_name);
+
+    if !old_path.exists() {
+        return OpResult {
+            success: false,
+            message: "备份不存在".to_string(),
+        };
+    }
+
+    if new_path.exists() {
+        return OpResult {
+            success: false,
+            message: "该名称已存在".to_string(),
+        };
+    }
+
+    // 重命名文件夹
+    if let Err(e) = fs::rename(&old_path, &new_path) {
+        return OpResult {
+            success: false,
+            message: format!("重命名失败: {}", e),
+        };
+    }
+
+    // 更新 meta.json 中的 display_name
+    let meta_path = new_path.join("meta.json");
+    if let Ok(json_str) = fs::read_to_string(&meta_path) {
+        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            meta["display_name"] = serde_json::Value::String(new_name.clone());
+            if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
+                let _ = fs::write(&meta_path, new_json);
+            }
+        }
+    }
+
+    OpResult {
+        success: true,
+        message: "重命名成功".to_string(),
+    }
+}
+
+#[tauri::command]
+fn restore_backup(app: tauri::AppHandle, game_name: String, folder_name: String) -> OpResult {
+    let config = load_config(&app);
+    let backup_dir = PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&folder_name);
+
+    if !backup_dir.exists() {
+        return OpResult {
+            success: false,
+            message: "备份不存在".to_string(),
+        };
+    }
+
+    // 读取 meta.json 获取原始路径
+    let meta_path = backup_dir.join("meta.json");
+    let original_path = if meta_path.exists() {
+        fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+            .and_then(|meta| {
+                meta["original_file_path"]
+                    .as_str()
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    if original_path.is_empty() {
+        return OpResult {
+            success: false,
+            message: "无法获取原始文件路径".to_string(),
+        };
+    }
+
+    // 找到备份文件夹中的实际文件（排除 meta.json）
+    let backup_file = match fs::read_dir(&backup_dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+            .filter(|e| e.file_name() != "meta.json")
+            .map(|e| e.path())
+            .next(),
+        Err(_) => None,
+    };
+
+    let backup_file = match backup_file {
+        Some(f) => f,
+        None => {
+            return OpResult {
+                success: false,
+                message: "备份文件夹中无文件".to_string(),
+            };
+        }
+    };
+
+    // 复制文件回原始位置
+    match fs::copy(&backup_file, &original_path) {
+        Ok(_) => OpResult {
+            success: true,
+            message: format!("已恢复到: {}", original_path),
+        },
+        Err(e) => OpResult {
+            success: false,
+            message: format!("恢复失败: {}", e),
+        },
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -306,7 +454,10 @@ fn main() {
             pick_file,
             pick_directory,
             create_backup,
-            list_backups
+            list_backups,
+            delete_backup,
+            rename_backup,
+            restore_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
