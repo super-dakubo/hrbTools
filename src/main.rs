@@ -165,6 +165,79 @@ fn pick_directory() -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn create_backup(app: tauri::AppHandle, game_name: String, file_path: String) -> OpResult {
+    // 1. 读取配置，检查备份目录是否已设置
+    let config = load_config(&app);
+    if config.backup_root.is_empty() {
+        return OpResult {
+            success: false,
+            message: "请先设置备份目录".to_string(),
+        };
+    }
+
+    // 2. 检查源文件是否存在
+    let source = PathBuf::from(&file_path);
+    if !source.exists() {
+        return OpResult {
+            success: false,
+            message: format!("文件不存在: {}", file_path),
+        };
+    }
+
+    // 3. 获取文件名
+    let file_name = match source.file_name() {
+        Some(name) => name.to_string_lossy().to_string(),
+        None => {
+            return OpResult {
+                success: false,
+                message: "无法获取文件名".to_string(),
+            };
+        }
+    };
+
+    // 4. 生成时间戳文件夹名（冒号替换为横线，避免 Windows 路径问题）
+    let now = chrono::Local::now();
+    let folder_name = now.format("%Y-%m-%d %H-%M-%S").to_string();
+    let display_name = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // 5. 创建备份目录
+    let backup_dir = PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&folder_name);
+
+    if let Err(e) = fs::create_dir_all(&backup_dir) {
+        return OpResult {
+            success: false,
+            message: format!("创建备份目录失败: {}", e),
+        };
+    }
+
+    // 6. 复制文件
+    let dest = backup_dir.join(&file_name);
+    if let Err(e) = fs::copy(&source, &dest) {
+        return OpResult {
+            success: false,
+            message: format!("复制文件失败: {}", e),
+        };
+    }
+
+    // 7. 写入 meta.json
+    let meta = serde_json::json!({
+        "original_file_path": file_path,
+        "display_name": display_name,
+    });
+
+    if let Ok(json) = serde_json::to_string_pretty(&meta) {
+        let _ = fs::write(backup_dir.join("meta.json"), json);
+    }
+
+    OpResult {
+        success: true,
+        message: format!("备份成功: {}", folder_name),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -172,7 +245,8 @@ fn main() {
             get_config,
             set_config,
             pick_file,
-            pick_directory
+            pick_directory,
+            create_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
