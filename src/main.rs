@@ -21,20 +21,65 @@ struct ConvertResponse {
     error: Option<String>,
 }
 
+// 反向转换：时间戳 → 时间字符串
+#[derive(Debug, Serialize, Deserialize)]
+struct TimestampRequest {
+    timestamp_ms: i64,
+    timezone: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DatetimeResponse {
+    success: bool,
+    datetime_str: Option<String>,
+    error: Option<String>,
+}
+
 // ==================== 配置 ====================
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+struct SlotConfig {
+    name: String,
+    #[serde(default = "default_next_backup_number")]
+    next_backup_number: u32,
+    #[serde(default)]
+    key_file_patterns: Vec<String>,
+}
+
+fn default_next_backup_number() -> u32 { 1 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct GameConfig {
+    name: String,
+    #[serde(default = "default_slots")]
+    slots: Vec<SlotConfig>,
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default)]
+    sort_order: u32,
+}
+
+fn default_slots() -> Vec<SlotConfig> {
+    vec![SlotConfig {
+        name: "存档1".to_string(),
+        next_backup_number: 1,
+        key_file_patterns: vec![],
+    }]
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct AppConfig {
+    #[serde(default)]
     backup_root: String,
     #[serde(default)]
-    game_names: Vec<String>,
+    games: Vec<GameConfig>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             backup_root: String::new(),
-            game_names: vec![],
+            games: vec![],
         }
     }
 }
@@ -45,8 +90,11 @@ impl Default for AppConfig {
 struct BackupInfo {
     folder_name: String,
     display_name: String,
+    description: String,
     created_at: String,
     original_file_path: String,
+    content_hash: String,
+    pinned: bool,
 }
 
 // ==================== 操作结果 ====================
@@ -125,15 +173,47 @@ fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
         }
     };
 
-    // 本地时区时间 → UTC → Unix 时间戳（秒）
+    // 本地时区时间 → UTC → Unix 时间戳（毫秒）
     let local_dt: DateTime<Tz> = tz.from_local_datetime(&naive_dt).unwrap();
     let utc_dt: DateTime<Utc> = local_dt.with_timezone(&Utc);
-    let timestamp = utc_dt.timestamp();
+    let timestamp = utc_dt.timestamp_millis();
 
     ConvertResponse {
         success: true,
         timestamp: Some(timestamp),
         error: None,
+    }
+}
+
+#[tauri::command]
+fn convert_to_datetime(request: TimestampRequest) -> DatetimeResponse {
+    let tz: Tz = match request.timezone.parse() {
+        Ok(tz) => tz,
+        Err(_) => {
+            return DatetimeResponse {
+                success: false,
+                datetime_str: None,
+                error: Some(format!("无效时区: {}", request.timezone)),
+            };
+        }
+    };
+
+    // 毫秒时间戳 → UTC → 本地时区时间字符串
+    match Utc.timestamp_millis_opt(request.timestamp_ms) {
+        chrono::LocalResult::Single(utc_dt) => {
+            let local_dt: DateTime<Tz> = utc_dt.with_timezone(&tz);
+            let datetime_str = local_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+            DatetimeResponse {
+                success: true,
+                datetime_str: Some(datetime_str),
+                error: None,
+            }
+        }
+        _ => DatetimeResponse {
+            success: false,
+            datetime_str: None,
+            error: Some("无效的时间戳".to_string()),
+        },
     }
 }
 
@@ -449,6 +529,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             convert_to_timestamp,
+            convert_to_datetime,
             get_config,
             set_config,
             pick_file,
