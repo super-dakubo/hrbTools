@@ -4,7 +4,6 @@
   "identifier": "com.hrbTools.app",
   "build": {
     "frontendDist": "./src",
-    "devUrl": "http://localhost:1420",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
@@ -18,7 +17,7 @@
   "app": {
     "windows": [
       {
-        "title": "时间转换工具",
+        "title": "HRB Tools",
         "width": 600,
         "height": 500
       }
