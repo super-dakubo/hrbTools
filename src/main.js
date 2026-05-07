@@ -584,6 +584,7 @@ async function refreshBackupList() {
                 <button class="btn-small" data-action="restore" data-folder="${escapeHtml(b.folder_name)}">恢复</button>
                 <button class="btn-small" data-action="rename-backup" data-folder="${escapeHtml(b.folder_name)}" data-desc="${escapeHtml(b.description || '')}">重命名</button>
                 <button class="btn-small" data-action="open-backup" data-folder="${escapeHtml(b.folder_name)}">打开</button>
+                <button class="btn-small" data-action="rehash-backup" data-folder="${escapeHtml(b.folder_name)}">重算</button>
                 <button class="btn-danger" data-action="delete-backup" data-folder="${escapeHtml(b.folder_name)}">删除</button>
             </div>`;
         }).join('');
@@ -606,6 +607,7 @@ function bindBackupItemEvents() {
             else if (action === 'delete-backup') await handleDeleteBackup(folder);
             else if (action === 'toggle-pin') await handleTogglePin(btn, folder);
             else if (action === 'open-backup') await handleOpenBackupFolder(folder);
+            else if (action === 'rehash-backup') await handleRehashBackup(btn, folder);
         });
     });
 }
@@ -676,6 +678,27 @@ async function handleOpenBackupFolder(folderName) {
     if (!currentConfig.backup_root || !selectedGame || !selectedSlot) return;
     const folderPath = `${currentConfig.backup_root}/${selectedGame}/${selectedSlot}/${folderName}`;
     await invoke('open_folder', { path: folderPath });
+}
+
+async function handleRehashBackup(btn, folderName) {
+    setButtonLoading(btn, '...');
+    try {
+        const result = await invoke('recompute_backup_hash', {
+            gameName: selectedGame,
+            slotName: selectedSlot,
+            folderName: folderName
+        });
+        if (result.success) {
+            await refreshCurrentHash();
+            refreshBackupList();
+        } else {
+            alert('重算失败: ' + result.message);
+        }
+    } catch (err) {
+        alert('重算失败: ' + err);
+    } finally {
+        resetButtonRaw(btn);
+    }
 }
 
 async function handleDeleteBackup(folderName) {

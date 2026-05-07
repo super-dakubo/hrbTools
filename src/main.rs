@@ -785,6 +785,59 @@ fn open_folder(path: String) -> OpResult {
     }
 }
 
+#[tauri::command]
+fn recompute_backup_hash(
+    app: tauri::AppHandle,
+    game_name: String,
+    slot_name: String,
+    folder_name: String,
+) -> OpResult {
+    let config = load_config(&app);
+    let backup_dir = std::path::PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&slot_name)
+        .join(&folder_name);
+
+    if !backup_dir.exists() {
+        return OpResult { success: false, message: "备份不存在".to_string() };
+    }
+
+    // 计算备份文件夹中文件（排除 meta.json）的哈希
+    let mut entries: Vec<std::path::PathBuf> = match std::fs::read_dir(&backup_dir) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+            .filter(|e| e.file_name() != "meta.json")
+            .map(|e| e.path())
+            .collect(),
+        Err(_) => vec![],
+    };
+    entries.sort();
+
+    let mut hasher = md5::Md5::new();
+    for entry in &entries {
+        let bytes = std::fs::read(entry).unwrap_or_default();
+        let rel = entry.file_name().unwrap_or_default().to_string_lossy();
+        let mut fh = md5::Md5::new();
+        fh.update(&bytes);
+        hasher.update(format!("{}:{:x}", rel, fh.finalize()).as_bytes());
+    }
+    let content_hash = format!("{:x}", hasher.finalize());
+
+    // 更新 meta.json
+    let meta_path = backup_dir.join("meta.json");
+    if let Ok(json_str) = std::fs::read_to_string(&meta_path) {
+        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            meta["content_hash"] = serde_json::Value::String(content_hash.clone());
+            if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
+                let _ = std::fs::write(&meta_path, new_json);
+            }
+        }
+    }
+
+    OpResult { success: true, message: format!("哈希已重算: {}", &content_hash[..8]) }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -800,6 +853,7 @@ fn main() {
             rename_backup,
             restore_backup,
             compute_hash,
+            recompute_backup_hash,
             toggle_backup_pin,
             toggle_game_pin,
             reorder_games,
