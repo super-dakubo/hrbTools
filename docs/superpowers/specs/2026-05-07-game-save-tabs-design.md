@@ -186,6 +186,7 @@ let currentHashBySlot = {};    // { "塞尔达:存档1": "abc123" } — 启动�
 15. **备份置顶** → 点击备份条目上的图钉图标切换置顶，置顶项优先排列
 16. **游戏拖拽排序** → 拖拽游戏标签调整顺序，自动更新 `sort_order`
 17. **游戏置顶** → 游戏标签右键菜单或按钮切换置顶
+18. **操作按钮防重复** → 所有异步操作按钮（保存、恢复、重命名、删除、置顶等）点击后立即禁用，操作完成/失败后恢复；禁用时显示等待样式（灰色降低透明度 + 文字变化如"保存中..."）
 
 ---
 
@@ -215,7 +216,7 @@ let currentHashBySlot = {};    // { "塞尔达:存档1": "abc123" } — 启动�
 
 **移除**：`.game-list`、`.game-item`、`.game-item.active`、`.game-item-name`、`.btn-delete-game`、`.backup-path-row`（备份目录行移到设置弹窗）
 
-**调整**：`.container` max-width 580px → 720px
+**调整**：`.container` max-width 580px → 720px，按钮增加 `button:disabled` 样式（`opacity: 0.5; cursor: not-allowed`）
 
 ---
 
