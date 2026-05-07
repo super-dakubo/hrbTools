@@ -251,6 +251,16 @@ button:disabled:hover { background: #4b8bf4; }
     cursor: not-allowed;
 }
 
+.tab-pin {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0 2px;
+    transition: color 0.15s;
+}
+
+.tab-pin:hover { color: #fbbf24 !important; }
+
 .btn-tiny {
     width: auto;
     padding: 0.25rem 0.6rem;
