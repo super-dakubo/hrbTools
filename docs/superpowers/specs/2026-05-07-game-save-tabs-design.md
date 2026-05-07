@@ -83,6 +83,8 @@ struct SlotConfig {
 struct GameConfig {
     name: String,
     slots: Vec<SlotConfig>,
+    pinned: bool,       // 置顶（排最左边）
+    sort_order: u32,    // 手动排序序号
 }
 
 struct AppConfig {
@@ -113,9 +115,15 @@ struct AppConfig {
 - **单文件**：直接 MD5
 - **文件夹**：遍历文件按路径排序，过滤匹配 `key_file_patterns` 的文件（空 = 全部），拼接 `relative_path+md5` 后整体 MD5
 - 每次备份时哈希写入 `meta.json` 的 `content_hash` 字段
+- `BackupInfo` 增加 `content_hash: String`、`pinned: bool` 字段
+
+**哈希重算时机**：
+- 工具启动时（`loadConfig`）：对每个存档位，重算当前源文件的哈希
+- 点击「保存存档」时：先重算哈希，再做去重判断
+- 前端维护 `currentHashBySlot`：`{ "塞尔达:存档1": "abc123" }`
 
 **保存时的去重**：
-1. 计算当前源的哈希
+1. 重算当前源的哈希
 2. 和最新一条备份的 `content_hash` 比较
 3. 相同 → 提示"存档未变化，无需重复备份"，不创建
 
@@ -127,6 +135,22 @@ struct AppConfig {
    - 是 → 先自动备份当前文件，再执行恢复
    - 否 → 直接覆盖（跳过保护）
 
+**备份列表哈希相同标记**：
+- 当前文件哈希在备份列表中有匹配 → 该条目显示绿色边框 / "=" 标记
+- 两条备份本身 hash 相同 → 彼此标记（说明内容重复）
+
+### 备份排序与置顶
+
+- 排序规则：**置顶优先 → 时间倒序**
+- 每条备份可置顶（toggle），右键或按钮切换
+- 需要新增 Rust 命令 `toggle_backup_pin`
+
+### 游戏排序与置顶
+
+- 排序规则：**置顶优先 → sort_order 升序 → 按名称**
+- 游戏标签支持拖拽排序（sort_order 自动更新）
+- `GameConfig.pinned` 可切换置顶
+
 ### 备份序号
 
 - `SlotConfig` 增加 `next_backup_number: u32` 字段，初始为 1
@@ -135,9 +159,10 @@ struct AppConfig {
 ### 前端状态
 
 ```js
-let selectedGame = '';       // 当前选中的游戏名
-let selectedSlot = '';       // 当前选中的存档位名
-let filePathBySlot = {};     // { "塞尔达:角色A": "D:/saves/file.dat" } — 每个存档位记住路径
+let selectedGame = '';         // 当前选中的游戏名
+let selectedSlot = '';         // 当前选中的存档位名
+let filePathBySlot = {};       // { "塞尔达:存档1": "D:/saves/file.dat" }
+let currentHashBySlot = {};    // { "塞尔达:存档1": "abc123" } — 启动和保存时重算
 ```
 
 ---
@@ -158,6 +183,9 @@ let filePathBySlot = {};     // { "塞尔达:角色A": "D:/saves/file.dat" } —
 12. **恢复备份** → 先计算当前文件哈希，在备份链中查找；有匹配直接覆盖，无匹配弹窗确认是否先备份
 13. **打开设置** → 点击顶部栏齿轮 ⚙，弹出模态设置面板，可设置备份根目录
 14. **关闭设置** → 点击 × 或背景遮罩，不破坏当前面板状态
+15. **备份置顶** → 点击备份条目上的图钉图标切换置顶，置顶项优先排列
+16. **游戏拖拽排序** → 拖拽游戏标签调整顺序，自动更新 `sort_order`
+17. **游戏置顶** → 游戏标签右键菜单或按钮切换置顶
 
 ---
 
@@ -172,6 +200,10 @@ let filePathBySlot = {};     // { "塞尔达:角色A": "D:/saves/file.dat" } —
 | `delete_backup` | 新增参数 `slotName: String` |
 | `rename_backup` | 新增参数 `slotName: String` |
 | `restore_backup` | 新增参数 `slotName: String` |
+| `compute_hash`（新增） | 参数 `filePath: String`, `patterns: Vec<String>`，返回哈希字符串 |
+| `toggle_backup_pin`（新增） | 参数 `gameName: String`, `slotName: String`, `folderName: String` |
+| `toggle_game_pin`（新增） | 参数 `gameName: String` |
+| `reorder_games`（新增） | 参数 `gameNames: Vec<String>`（新顺序） |
 
 所有命令参数使用 camelCase（Tauri 自动转换），结构体字段使用 snake_case。
 
