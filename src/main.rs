@@ -40,7 +40,10 @@ struct DatetimeResponse {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct SlotConfig {
+    id: String,
     name: String,
+    #[serde(default)]
+    file_path: String,
     #[serde(default = "default_next_backup_number")]
     next_backup_number: u32,
     #[serde(default)]
@@ -51,21 +54,14 @@ fn default_next_backup_number() -> u32 { 1 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct GameConfig {
+    id: String,
     name: String,
-    #[serde(default = "default_slots")]
+    #[serde(default)]
     slots: Vec<SlotConfig>,
     #[serde(default)]
     pinned: bool,
     #[serde(default)]
     sort_order: u32,
-}
-
-fn default_slots() -> Vec<SlotConfig> {
-    vec![SlotConfig {
-        name: "存档1".to_string(),
-        next_backup_number: 1,
-        key_file_patterns: vec![],
-    }]
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -246,10 +242,10 @@ fn pick_directory() -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
-fn list_backups_internal(config: &AppConfig, game_name: &str, slot_name: &str) -> Vec<BackupInfo> {
+fn list_backups_internal(config: &AppConfig, game_id: &str, slot_id: &str) -> Vec<BackupInfo> {
     let game_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(game_name)
-        .join(slot_name);
+        .join(game_id)
+        .join(slot_id);
 
     if !game_dir.exists() {
         return vec![];
@@ -315,8 +311,8 @@ fn read_backup_meta(dir: &std::path::Path, folder_name: &str) -> Option<BackupIn
 #[tauri::command]
 fn create_backup(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     file_path: String,
 ) -> OpResult {
     let mut config = load_config(&app);
@@ -345,8 +341,8 @@ fn create_backup(
     };
 
     // 4. 找到对应的 slot，获取序号和 patterns
-    let slot = match config.games.iter().find(|g| g.name == game_name) {
-        Some(game) => match game.slots.iter().find(|s| s.name == slot_name) {
+    let slot = match config.games.iter().find(|g| g.id == game_id) {
+        Some(game) => match game.slots.iter().find(|s| s.id == slot_id) {
             Some(s) => s.clone(),
             None => return OpResult { success: false, message: "存档位不存在".to_string() },
         },
@@ -362,7 +358,7 @@ fn create_backup(
     };
 
     // 6. 检查最新备份哈希（去重）
-    let existing = list_backups_internal(&config, &game_name, &slot_name);
+    let existing = list_backups_internal(&config, &game_id, &slot_id);
     if let Some(latest) = existing.first() {
         if latest.content_hash == content_hash {
             return OpResult {
@@ -381,8 +377,8 @@ fn create_backup(
 
     // 8. 创建备份目录
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name)
+        .join(&game_id)
+        .join(&slot_id)
         .join(&folder_name);
 
     if let Err(e) = std::fs::create_dir_all(&backup_dir) {
@@ -413,8 +409,8 @@ fn create_backup(
     }
 
     // 11. 自增序号并保存
-    if let Some(game) = config.games.iter_mut().find(|g| g.name == game_name) {
-        if let Some(s) = game.slots.iter_mut().find(|s| s.name == slot_name) {
+    if let Some(game) = config.games.iter_mut().find(|g| g.id == game_id) {
+        if let Some(s) = game.slots.iter_mut().find(|s| s.id == slot_id) {
             s.next_backup_number += 1;
         }
     }
@@ -427,22 +423,22 @@ fn create_backup(
 }
 
 #[tauri::command]
-fn list_backups(app: tauri::AppHandle, game_name: String, slot_name: String) -> Vec<BackupInfo> {
+fn list_backups(app: tauri::AppHandle, game_id: String, slot_id: String) -> Vec<BackupInfo> {
     let config = load_config(&app);
-    list_backups_internal(&config, &game_name, &slot_name)
+    list_backups_internal(&config, &game_id, &slot_id)
 }
 
 #[tauri::command]
 fn delete_backup(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     folder_name: String,
 ) -> OpResult {
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name)
+        .join(&game_id)
+        .join(&slot_id)
         .join(&folder_name);
 
     if !backup_dir.exists() {
@@ -458,15 +454,15 @@ fn delete_backup(
 #[tauri::command]
 fn rename_backup(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     folder_name: String,
     new_description: String,
 ) -> OpResult {
     let config = load_config(&app);
     let game_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name);
+        .join(&game_id)
+        .join(&slot_id);
 
     let old_path = game_dir.join(&folder_name);
 
@@ -521,15 +517,15 @@ fn rename_backup(
 #[tauri::command]
 fn restore_backup(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     folder_name: String,
     skip_backup: bool,
 ) -> OpResult {
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name)
+        .join(&game_id)
+        .join(&slot_id)
         .join(&folder_name);
 
     if !backup_dir.exists() {
@@ -578,13 +574,13 @@ fn restore_backup(
     if !skip_backup && original.exists() {
         // 获取当前 slot 的 patterns
         let patterns: Vec<String> = config.games.iter()
-            .find(|g| g.name == game_name)
-            .and_then(|g| g.slots.iter().find(|s| s.name == slot_name))
+            .find(|g| g.id == game_id)
+            .and_then(|g| g.slots.iter().find(|s| s.id == slot_id))
             .map(|s| s.key_file_patterns.clone())
             .unwrap_or_default();
 
         let current_hash = compute_hash(original_path.clone(), patterns).unwrap_or_default();
-        let hash_match = list_backups_internal(&config, &game_name, &slot_name)
+        let hash_match = list_backups_internal(&config, &game_id, &slot_id)
             .iter()
             .any(|b| b.content_hash == current_hash);
 
@@ -683,14 +679,14 @@ fn simple_glob_match(pattern: &str, name: &str) -> bool {
 #[tauri::command]
 fn toggle_backup_pin(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     folder_name: String,
 ) -> OpResult {
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name)
+        .join(&game_id)
+        .join(&slot_id)
         .join(&folder_name);
 
     if !backup_dir.exists() {
@@ -721,9 +717,9 @@ fn toggle_backup_pin(
 }
 
 #[tauri::command]
-fn toggle_game_pin(app: tauri::AppHandle, game_name: String) -> OpResult {
+fn toggle_game_pin(app: tauri::AppHandle, game_id: String) -> OpResult {
     let mut config = load_config(&app);
-    if let Some(game) = config.games.iter_mut().find(|g| g.name == game_name) {
+    if let Some(game) = config.games.iter_mut().find(|g| g.id == game_id) {
         game.pinned = !game.pinned;
     }
     save_config(&app, &config);
@@ -731,10 +727,10 @@ fn toggle_game_pin(app: tauri::AppHandle, game_name: String) -> OpResult {
 }
 
 #[tauri::command]
-fn reorder_games(app: tauri::AppHandle, game_names: Vec<String>) -> OpResult {
+fn reorder_games(app: tauri::AppHandle, game_ids: Vec<String>) -> OpResult {
     let mut config = load_config(&app);
-    for (i, name) in game_names.iter().enumerate() {
-        if let Some(game) = config.games.iter_mut().find(|g| &g.name == name) {
+    for (i, id) in game_ids.iter().enumerate() {
+        if let Some(game) = config.games.iter_mut().find(|g| &g.id == id) {
             game.sort_order = i as u32;
         }
     }
@@ -788,14 +784,14 @@ fn open_folder(path: String) -> OpResult {
 #[tauri::command]
 fn recompute_backup_hash(
     app: tauri::AppHandle,
-    game_name: String,
-    slot_name: String,
+    game_id: String,
+    slot_id: String,
     folder_name: String,
 ) -> OpResult {
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
-        .join(&game_name)
-        .join(&slot_name)
+        .join(&game_id)
+        .join(&slot_id)
         .join(&folder_name);
 
     if !backup_dir.exists() {
