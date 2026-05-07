@@ -246,19 +246,91 @@ fn pick_directory() -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
+fn list_backups_internal(config: &AppConfig, game_name: &str, slot_name: &str) -> Vec<BackupInfo> {
+    let game_dir = std::path::PathBuf::from(&config.backup_root)
+        .join(game_name)
+        .join(slot_name);
+
+    if !game_dir.exists() {
+        return vec![];
+    }
+
+    let mut backups: Vec<BackupInfo> = match std::fs::read_dir(&game_dir) {
+        Ok(entries) => entries
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let folder_name = entry.file_name().to_string_lossy().to_string();
+                if !entry.file_type().ok()?.is_dir() { return None; }
+                read_backup_meta(&entry.path(), &folder_name)
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
+    // 置顶优先 → 文件夹名倒序
+    backups.sort_by(|a, b| {
+        b.pinned.cmp(&a.pinned)
+            .then_with(|| b.folder_name.cmp(&a.folder_name))
+    });
+    backups
+}
+
+fn read_backup_meta(dir: &std::path::Path, folder_name: &str) -> Option<BackupInfo> {
+    let meta_path = dir.join("meta.json");
+    let (display_name, original_file_path, content_hash, pinned) = if meta_path.exists() {
+        std::fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+            .map(|meta| {
+                (
+                    meta["display_name"].as_str().unwrap_or(folder_name).to_string(),
+                    meta["original_file_path"].as_str().unwrap_or("").to_string(),
+                    meta["content_hash"].as_str().unwrap_or("").to_string(),
+                    meta["pinned"].as_bool().unwrap_or(false),
+                )
+            })
+            .unwrap_or_else(|| (folder_name.to_string(), String::new(), String::new(), false))
+    } else {
+        (folder_name.to_string(), String::new(), String::new(), false)
+    };
+
+    // 从 folder_name 提取描述（时间戳之后的部分）
+    let description = folder_name
+        .split(' ')
+        .skip(2) // YYYY-MM-DD HH-MM-SS description
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    Some(BackupInfo {
+        folder_name: folder_name.to_string(),
+        display_name,
+        description,
+        created_at: String::new(),
+        original_file_path,
+        content_hash,
+        pinned,
+    })
+}
+
 #[tauri::command]
-fn create_backup(app: tauri::AppHandle, game_name: String, file_path: String) -> OpResult {
-    // 1. 读取配置，检查备份目录是否已设置
-    let config = load_config(&app);
+fn create_backup(
+    app: tauri::AppHandle,
+    game_name: String,
+    slot_name: String,
+    file_path: String,
+) -> OpResult {
+    let mut config = load_config(&app);
+
+    // 1. 检查备份目录
     if config.backup_root.is_empty() {
         return OpResult {
             success: false,
-            message: "请先设置备份目录".to_string(),
+            message: "请先在设置中配置备份根目录".to_string(),
         };
     }
 
-    // 2. 检查源文件是否存在
-    let source = PathBuf::from(&file_path);
+    // 2. 检查源文件
+    let source = std::path::PathBuf::from(&file_path);
     if !source.exists() {
         return OpResult {
             success: false,
@@ -269,49 +341,84 @@ fn create_backup(app: tauri::AppHandle, game_name: String, file_path: String) ->
     // 3. 获取文件名
     let file_name = match source.file_name() {
         Some(name) => name.to_string_lossy().to_string(),
-        None => {
-            return OpResult {
-                success: false,
-                message: "无法获取文件名".to_string(),
-            };
-        }
+        None => return OpResult { success: false, message: "无法获取文件名".to_string() },
     };
 
-    // 4. 生成时间戳文件夹名（冒号替换为横线，避免 Windows 路径问题）
-    let now = chrono::Local::now();
-    let folder_name = now.format("%Y-%m-%d %H-%M-%S").to_string();
-    let display_name = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    // 4. 找到对应的 slot，获取序号和 patterns
+    let slot = match config.games.iter().find(|g| g.name == game_name) {
+        Some(game) => match game.slots.iter().find(|s| s.name == slot_name) {
+            Some(s) => s.clone(),
+            None => return OpResult { success: false, message: "存档位不存在".to_string() },
+        },
+        None => return OpResult { success: false, message: "游戏不存在".to_string() },
+    };
 
-    // 5. 创建备份目录
-    let backup_dir = PathBuf::from(&config.backup_root)
+    let backup_number = slot.next_backup_number;
+
+    // 5. 计算哈希
+    let content_hash = match compute_hash(file_path.clone(), slot.key_file_patterns.clone()) {
+        Ok(h) => h,
+        Err(e) => return OpResult { success: false, message: format!("计算哈希失败: {}", e) },
+    };
+
+    // 6. 检查最新备份哈希（去重）
+    let existing = list_backups_internal(&config, &game_name, &slot_name);
+    if let Some(latest) = existing.first() {
+        if latest.content_hash == content_hash {
+            return OpResult {
+                success: false,
+                message: "存档未变化，无需重复备份".to_string(),
+            };
+        }
+    }
+
+    // 7. 生成备份文件夹名
+    let now = chrono::Local::now();
+    let timestamp_part = now.format("%Y-%m-%d %H-%M-%S").to_string();
+    let folder_name = format!("{} {}", timestamp_part, backup_number);
+    let display_name = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let display_name_full = format!("{} {}", display_name, backup_number);
+
+    // 8. 创建备份目录
+    let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_name)
+        .join(&slot_name)
         .join(&folder_name);
 
-    if let Err(e) = fs::create_dir_all(&backup_dir) {
+    if let Err(e) = std::fs::create_dir_all(&backup_dir) {
         return OpResult {
             success: false,
             message: format!("创建备份目录失败: {}", e),
         };
     }
 
-    // 6. 复制文件
+    // 9. 复制文件
     let dest = backup_dir.join(&file_name);
-    if let Err(e) = fs::copy(&source, &dest) {
+    if let Err(e) = std::fs::copy(&source, &dest) {
         return OpResult {
             success: false,
             message: format!("复制文件失败: {}", e),
         };
     }
 
-    // 7. 写入 meta.json
+    // 10. 写入 meta.json
     let meta = serde_json::json!({
         "original_file_path": file_path,
-        "display_name": display_name,
+        "display_name": display_name_full,
+        "description": backup_number.to_string(),
+        "content_hash": content_hash,
     });
-
     if let Ok(json) = serde_json::to_string_pretty(&meta) {
-        let _ = fs::write(backup_dir.join("meta.json"), json);
+        let _ = std::fs::write(backup_dir.join("meta.json"), json);
     }
+
+    // 11. 自增序号并保存
+    if let Some(game) = config.games.iter_mut().find(|g| g.name == game_name) {
+        if let Some(s) = game.slots.iter_mut().find(|s| s.name == slot_name) {
+            s.next_backup_number += 1;
+        }
+    }
+    save_config(&app, &config);
 
     OpResult {
         success: true,
