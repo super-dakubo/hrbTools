@@ -3,65 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>时间转换工具</title>
+    <title>HRB Tools</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
+<div class="container">
 
-        <!-- Tab 栏 -->
+    <!-- 顶部栏 -->
+    <div class="top-bar">
+        <span class="top-bar-title">HRB Tools</span>
+        <button class="settings-btn" id="settingsBtn" title="设置">&#9881;</button>
+    </div>
+
+    <div class="body-area">
+
+        <!-- 左侧 Tab 栏 -->
         <div class="tab-bar">
-            <button class="tab active" data-tab="convert">时间转换</button>
-            <button class="tab" data-tab="backup">存档管理</button>
+            <button class="tab active" data-tab="convert">
+                <span class="tab-icon">&#9202;</span>
+                <span class="tab-label">时间转换</span>
+            </button>
+            <button class="tab" data-tab="backup">
+                <span class="tab-icon">&#128190;</span>
+                <span class="tab-label">存档管理</span>
+            </button>
         </div>
 
-        <!-- ==================== 时间转换面板 ==================== -->
+        <!-- 右侧内容区 -->
+        <div class="content">
+
+        <!-- 时间转换面板 -->
         <div class="panel active" id="panel-convert">
-            <h1>时间字符串 → Unix时间戳</h1>
-
-            <div class="input-group">
-                <label>时间字符串</label>
-                <input type="text" id="datetimeInput" placeholder="例如: 2025-04-04 15:30:00" value="2025-04-04 15:30:00">
-            </div>
-
+            <h1>时间转换工具</h1>
             <div class="input-group">
                 <label>时区</label>
                 <select id="timezoneSelect">
                     <option value="UTC">UTC</option>
-                    <option value="Asia/Shanghai" selected>Asia/Shanghai (中国标准时间)</option>
-                    <option value="America/New_York">America/New_York (美国东部时间)</option>
-                    <option value="Europe/London">Europe/London (伦敦时间)</option>
-                    <option value="Asia/Tokyo">Asia/Tokyo (东京时间)</option>
-                    <option value="Australia/Sydney">Australia/Sydney (悉尼时间)</option>
+                    <option value="Asia/Shanghai" selected>Asia/Shanghai</option>
+                    <option value="America/New_York">America/New_York</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    <option value="Australia/Sydney">Australia/Sydney</option>
                 </select>
             </div>
-
-            <button id="convertBtn">转换</button>
-
-            <div class="result">
-                <label>Unix时间戳 (秒)</label>
-                <div id="timestampResult">—</div>
+            <div class="convert-section">
+                <div class="section-row">
+                    <label>时间字符串 &rarr; Unix时间戳（毫秒）</label>
+                    <button id="resetTimeBtn" class="btn-tiny">重置为当前时间</button>
+                </div>
+                <input type="text" id="datetimeInput" placeholder="例如: 2026-05-07 15:30:00">
+                <button id="convertBtn">转换</button>
+                <div class="result" id="timestampResult">&mdash;</div>
+                <div id="errorMsg" class="error"></div>
             </div>
-
-            <div id="errorMsg" class="error"></div>
+            <div class="convert-section">
+                <label>Unix时间戳（毫秒） &rarr; 时间字符串</label>
+                <input type="text" id="timestampInput" placeholder="例如: 1746466200000">
+                <button id="convertBackBtn">转换</button>
+                <div class="result" id="datetimeResult">&mdash;</div>
+                <div id="errorMsg2" class="error"></div>
+            </div>
         </div>
 
-        <!-- ==================== 存档管理面板 ==================== -->
+        <!-- 存档管理面板 -->
         <div class="panel" id="panel-backup">
             <h1>游戏存档备份</h1>
 
-            <!-- 游戏选择 -->
-            <div class="input-group">
-                <label>选择游戏</label>
-                <div class="row">
-                    <select id="gameSelect">
-                        <option value="">— 请先新增游戏 —</option>
-                    </select>
-                    <button id="addGameBtn" class="btn-small">+</button>
-                </div>
+            <!-- 第一层：游戏标签 -->
+            <div class="game-tabs" id="gameTabs">
+                <!-- 动态生成 .game-tab + .game-tab-add -->
             </div>
 
-            <!-- 文件选择 -->
+            <!-- 第二层：存档位标签 -->
+            <div class="slot-tabs" id="slotTabs">
+                <!-- 动态生成 .slot-tag + .slot-tag-add -->
+            </div>
+
+            <!-- 存档文件 -->
             <div class="input-group">
                 <label>存档文件</label>
                 <div class="row">
@@ -70,31 +88,45 @@
                 </div>
             </div>
 
-            <!-- 备份目录 + 保存按钮 -->
-            <div class="input-group">
-                <label>备份位置</label>
-                <div class="row backup-path-row">
-                    <span id="backupRootDisplay" class="path-hint">未设置</span>
-                    <button id="setBackupDirBtn" class="btn-small">设置目录</button>
-                </div>
-            </div>
-
             <button id="saveBackupBtn">保存存档</button>
 
             <div id="backupError" class="error"></div>
             <div id="backupSuccess" class="success"></div>
 
-            <!-- 存档列表 -->
+            <!-- 备份列表 -->
             <div class="backup-list-section">
-                <h3>存档列表</h3>
+                <h3 id="backupListTitle">备份记录</h3>
                 <div id="backupList" class="backup-list">
-                    <div class="empty-hint">请先选择游戏</div>
+                    <div class="empty-hint">请先选择游戏和存档位</div>
                 </div>
             </div>
         </div>
 
+        </div>
     </div>
 
-    <script type="module" src="main.js"></script>
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settingsOverlay" style="display:none">
+        <div class="modal" id="settingsModal">
+            <div class="modal-header">
+                <span class="modal-title">&#9881; 设置</span>
+                <button class="modal-close" id="settingsCloseBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>备份根目录</label>
+                    <div class="row">
+                        <span id="settingsBackupRoot" class="path-hint">未设置</span>
+                        <button id="settingsSetDirBtn" class="btn-small">更改</button>
+                    </div>
+                </div>
+                <div class="settings-hint">更多设置项将陆续添加</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="main.js"></script>
 </body>
 </html>
