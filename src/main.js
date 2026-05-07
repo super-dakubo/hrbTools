@@ -3,10 +3,10 @@ const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args);
 
 // ==================== 状态 ====================
 let currentConfig = { backup_root: '', games: [] };
-let selectedGame = '';
-let selectedSlot = '';
-let filePathBySlot = {};       // { "游戏1:存档1": "D:/saves/file.dat" }
-let currentHashBySlot = {};    // { "游戏1:存档1": "abc123" }
+let selectedGameId = '';
+let selectedSlotId = '';
+let filePathBySlot = {};       // { "gameId:slotId": "D:/saves/file.dat" }
+let currentHashBySlot = {};    // { "gameId:slotId": "abc123" }
 
 // ==================== DOM 引用 ====================
 
@@ -114,9 +114,9 @@ async function loadConfig() {
     currentConfig = await invoke('get_config');
     updateSettingsDisplay();
     if (currentConfig.games.length > 0) {
-        selectedGame = currentConfig.games[0].name;
+        selectedGameId = currentConfig.games[0].id;
         if (currentConfig.games[0].slots.length > 0) {
-            selectedSlot = currentConfig.games[0].slots[0].name;
+            selectedSlotId = currentConfig.games[0].slots[0].id;
         }
     }
     renderGameTabs();
@@ -130,18 +130,32 @@ async function saveConfigToBackend() {
     await invoke('set_config', { config: currentConfig });
 }
 
+// ==================== 文件路径持久化 ====================
+
+function saveFilePathToSlot(filePath) {
+    if (!selectedGameId || !selectedSlotId) return;
+    const key = selectedGameId + ':' + selectedSlotId;
+    filePathBySlot[key] = filePath;
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
+    if (!game) return;
+    const slot = game.slots.find(s => s.id === selectedSlotId);
+    if (!slot) return;
+    slot.file_path = filePath;
+    saveConfigToBackend();
+}
+
 // ==================== 游戏标签渲染 ====================
 
 function renderGameTabs() {
     const games = getSortedGames();
     gameTabs.innerHTML = games.map(g => {
-        const activeClass = g.name === selectedGame ? ' active' : '';
-        return `<button class="game-tab${activeClass}" data-game="${escapeHtml(g.name)}" draggable="true"
+        const activeClass = g.id === selectedGameId ? ' active' : '';
+        return `<button class="game-tab${activeClass}" data-game-id="${escapeHtml(g.id)}" draggable="true"
                   title="拖拽排序 | 双击改名">
-                  <span class="tab-pin" data-action="pin-game" data-game="${escapeHtml(g.name)}"
+                  <span class="tab-pin" data-action="pin-game" data-game-id="${escapeHtml(g.id)}"
                     style="font-size:0.75rem;color:${g.pinned ? '#fbbf24' : 'rgba(255,255,255,0.2)'}">&#128204;</span>
                   ${escapeHtml(g.name)}
-                  <span class="tab-close" data-action="delete-game" data-game="${escapeHtml(g.name)}">&times;</span>
+                  <span class="tab-close" data-action="delete-game" data-game-id="${escapeHtml(g.id)}">&times;</span>
                 </button>`;
     }).join('') + `<button class="game-tab-add" id="addGameBtn" title="新增游戏">+</button>`;
 
@@ -162,16 +176,16 @@ function bindGameTabEvents() {
             if (e.target.dataset.action === 'delete-game') return;
             if (e.target.dataset.action === 'pin-game') {
                 e.stopPropagation();
-                toggleGamePin(e.target.dataset.game);
+                toggleGamePin(e.target.dataset.gameId);
                 return;
             }
-            const name = tab.dataset.game;
-            if (name !== selectedGame) {
-                selectedGame = name;
-                selectedSlot = '';
-                const game = currentConfig.games.find(g => g.name === name);
+            const gameId = tab.dataset.gameId;
+            if (gameId !== selectedGameId) {
+                selectedGameId = gameId;
+                selectedSlotId = '';
+                const game = currentConfig.games.find(g => g.id === gameId);
                 if (game && game.slots.length > 0) {
-                    selectedSlot = game.slots[0].name;
+                    selectedSlotId = game.slots[0].id;
                     restoreFilePath();
                 }
                 renderGameTabs();
@@ -186,7 +200,7 @@ function bindGameTabEvents() {
         });
 
         tab.addEventListener('dragstart', (e) => {
-            e.dataTransfer.setData('text/plain', tab.dataset.game);
+            e.dataTransfer.setData('text/plain', tab.dataset.gameId);
             tab.classList.add('dragging');
         });
         tab.addEventListener('dragend', () => tab.classList.remove('dragging'));
@@ -196,20 +210,22 @@ function bindGameTabEvents() {
         tab.addEventListener('dragover', (e) => { e.preventDefault(); });
         tab.addEventListener('drop', async (e) => {
             e.preventDefault();
-            const fromName = e.dataTransfer.getData('text/plain');
-            const toName = tab.dataset.game;
-            if (fromName === toName) return;
-            await handleGameReorder(fromName, toName);
+            const fromId = e.dataTransfer.getData('text/plain');
+            const toId = tab.dataset.gameId;
+            if (fromId === toId) return;
+            await handleGameReorder(fromId, toId);
         });
     });
 
     document.querySelectorAll('.tab-close[data-action="delete-game"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const name = btn.dataset.game;
-            if (!confirm(`确定删除游戏「${name}」及其所有存档位吗？`)) return;
-            currentConfig.games = currentConfig.games.filter(g => g.name !== name);
-            if (selectedGame === name) { selectedGame = ''; selectedSlot = ''; }
+            const gameId = btn.dataset.gameId;
+            const game = currentConfig.games.find(g => g.id === gameId);
+            if (!game) return;
+            if (!confirm(`确定删除游戏「${game.name}」及其所有存档位吗？`)) return;
+            currentConfig.games = currentConfig.games.filter(g => g.id !== gameId);
+            if (selectedGameId === gameId) { selectedGameId = ''; selectedSlotId = ''; }
             await saveConfigToBackend();
             renderGameTabs();
             renderSlotTabs();
@@ -220,20 +236,25 @@ function bindGameTabEvents() {
     const addBtn = document.getElementById('addGameBtn');
     if (addBtn) {
         addBtn.addEventListener('click', async () => {
+            const gameId = crypto.randomUUID();
+            const slotId = crypto.randomUUID();
             const n = currentConfig.games.length + 1;
             const name = `游戏${n}`;
             currentConfig.games.push({
-                name, slots: [{ name: '存档1', next_backup_number: 1, key_file_patterns: [] }],
-                pinned: false, sort_order: currentConfig.games.length
+                id: gameId,
+                name,
+                slots: [{ id: slotId, name: '存档1', file_path: '', next_backup_number: 1, key_file_patterns: [] }],
+                pinned: false,
+                sort_order: currentConfig.games.length
             });
             await saveConfigToBackend();
-            selectedGame = name;
-            selectedSlot = '存档1';
+            selectedGameId = gameId;
+            selectedSlotId = slotId;
             renderGameTabs();
             renderSlotTabs();
             refreshBackupList();
             setTimeout(() => {
-                const newTab = document.querySelector(`.game-tab[data-game="${escapeHtml(name)}"]`);
+                const newTab = document.querySelector(`.game-tab[data-game-id="${gameId}"]`);
                 if (newTab) startInlineEditGame(newTab);
             }, 50);
         });
@@ -241,22 +262,25 @@ function bindGameTabEvents() {
 }
 
 function startInlineEditGame(tab) {
-    const name = tab.dataset.game;
+    const gameId = tab.dataset.gameId;
+    const game = currentConfig.games.find(g => g.id === gameId);
+    if (!game) return;
+    const name = game.name;
     const input = document.createElement('input');
     input.value = name;
     input.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             const newName = input.value.trim();
-            if (newName && newName !== name) await renameGame(name, newName);
+            if (newName && newName !== name) await renameGame(gameId, newName);
         } else if (e.key === 'Escape') {
             renderGameTabs();
-            if (selectedGame) renderSlotTabs();
+            if (selectedGameId) renderSlotTabs();
         }
     });
     input.addEventListener('blur', async () => {
         const newName = input.value.trim();
-        if (newName && newName !== name) await renameGame(name, newName);
-        else { renderGameTabs(); if (selectedGame) renderSlotTabs(); }
+        if (newName && newName !== name) await renameGame(gameId, newName);
+        else { renderGameTabs(); if (selectedGameId) renderSlotTabs(); }
     });
     // Replace the text content but keep the close button
     while (tab.firstChild) tab.removeChild(tab.firstChild);
@@ -265,74 +289,56 @@ function startInlineEditGame(tab) {
     const closeBtn = document.createElement('span');
     closeBtn.className = 'tab-close';
     closeBtn.dataset.action = 'delete-game';
-    closeBtn.dataset.game = name;
+    closeBtn.dataset.gameId = gameId;
     closeBtn.innerHTML = '&times;';
     tab.appendChild(closeBtn);
     input.focus();
     input.select();
 }
 
-async function renameGame(oldName, newName) {
+async function renameGame(gameId, newName) {
     if (currentConfig.games.some(g => g.name === newName)) {
         alert('该游戏名已存在');
         renderGameTabs(); renderSlotTabs();
         return;
     }
-    const game = currentConfig.games.find(g => g.name === oldName);
+    const game = currentConfig.games.find(g => g.id === gameId);
     if (game) game.name = newName;
-    if (selectedGame === oldName) selectedGame = newName;
-    updateSlotKey(oldName, newName);
+    // Keys are ID-based, no need to update filePathBySlot / currentHashBySlot
     await saveConfigToBackend();
     renderGameTabs();
     renderSlotTabs();
     refreshBackupList();
 }
 
-async function handleGameReorder(fromName, toName) {
+async function handleGameReorder(fromId, toId) {
     const sorted = getSortedGames();
-    const fromIdx = sorted.findIndex(g => g.name === fromName);
-    const toIdx = sorted.findIndex(g => g.name === toName);
+    const fromIdx = sorted.findIndex(g => g.id === fromId);
+    const toIdx = sorted.findIndex(g => g.id === toId);
     sorted.splice(toIdx, 0, sorted.splice(fromIdx, 1)[0]);
-    const names = sorted.map(g => g.name);
-    await invoke('reorder_games', { gameNames: names });
-    names.forEach((n, i) => {
-        const g = currentConfig.games.find(g => g.name === n);
+    const ids = sorted.map(g => g.id);
+    await invoke('reorder_games', { gameIds: ids });
+    ids.forEach((id, i) => {
+        const g = currentConfig.games.find(g => g.id === id);
         if (g) g.sort_order = i;
     });
     renderGameTabs();
 }
 
-async function toggleGamePin(gameName) {
-    const result = await invoke('toggle_game_pin', { gameName: gameName });
+async function toggleGamePin(gameId) {
+    const result = await invoke('toggle_game_pin', { gameId: gameId });
     if (result.success) {
-        const game = currentConfig.games.find(g => g.name === gameName);
+        const game = currentConfig.games.find(g => g.id === gameId);
         if (game) game.pinned = !game.pinned;
         renderGameTabs();
     }
 }
 
-function updateSlotKey(oldGameName, newGameName) {
-    const newFilePath = {};
-    const newHash = {};
-    for (const [key, val] of Object.entries(filePathBySlot)) {
-        if (key.startsWith(oldGameName + ':')) {
-            newFilePath[newGameName + ':' + key.slice(oldGameName.length + 1)] = val;
-        } else { newFilePath[key] = val; }
-    }
-    for (const [key, val] of Object.entries(currentHashBySlot)) {
-        if (key.startsWith(oldGameName + ':')) {
-            newHash[newGameName + ':' + key.slice(oldGameName.length + 1)] = val;
-        } else { newHash[key] = val; }
-    }
-    filePathBySlot = newFilePath;
-    currentHashBySlot = newHash;
-}
-
 // ==================== 存档位标签渲染 ====================
 
 function renderSlotTabs() {
-    if (!selectedGame) { slotTabs.innerHTML = ''; return; }
-    const game = currentConfig.games.find(g => g.name === selectedGame);
+    if (!selectedGameId) { slotTabs.innerHTML = ''; return; }
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game || game.slots.length === 0) {
         slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>';
         return;
@@ -340,10 +346,10 @@ function renderSlotTabs() {
 
     slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>' +
         game.slots.map(s => {
-            const activeClass = s.name === selectedSlot ? ' active' : '';
-            return `<button class="slot-tag${activeClass}" data-slot="${escapeHtml(s.name)}">
+            const activeClass = s.id === selectedSlotId ? ' active' : '';
+            return `<button class="slot-tag${activeClass}" data-slot-id="${escapeHtml(s.id)}">
                       ${escapeHtml(s.name)}
-                      <span class="tag-close" data-action="delete-slot" data-slot="${escapeHtml(s.name)}">&times;</span>
+                      <span class="tag-close" data-action="delete-slot" data-slot-id="${escapeHtml(s.id)}">&times;</span>
                     </button>`;
         }).join('') +
         `<button class="slot-tag-add" id="addSlotBtn" title="新增存档位">+</button>`;
@@ -355,9 +361,9 @@ function bindSlotTagEvents(game) {
     document.querySelectorAll('.slot-tag').forEach(tag => {
         tag.addEventListener('click', (e) => {
             if (e.target.dataset.action === 'delete-slot') return;
-            const name = tag.dataset.slot;
-            if (name !== selectedSlot) {
-                selectedSlot = name;
+            const slotId = tag.dataset.slotId;
+            if (slotId !== selectedSlotId) {
+                selectedSlotId = slotId;
                 restoreFilePath();
                 renderSlotTabs();
                 refreshBackupList();
@@ -373,11 +379,13 @@ function bindSlotTagEvents(game) {
     document.querySelectorAll('.tag-close[data-action="delete-slot"]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            const name = btn.dataset.slot;
+            const slotId = btn.dataset.slotId;
+            const slot = game.slots.find(s => s.id === slotId);
+            if (!slot) return;
             if (game.slots.length <= 1) { alert('至少保留一个存档位'); return; }
-            if (!confirm(`确定删除存档位「${name}」及其所有备份吗？`)) return;
-            game.slots = game.slots.filter(s => s.name !== name);
-            if (selectedSlot === name) selectedSlot = game.slots[0].name;
+            if (!confirm(`确定删除存档位「${slot.name}」及其所有备份吗？`)) return;
+            game.slots = game.slots.filter(s => s.id !== slotId);
+            if (selectedSlotId === slotId) selectedSlotId = game.slots[0].id;
             await saveConfigToBackend();
             renderSlotTabs();
             refreshBackupList();
@@ -387,15 +395,16 @@ function bindSlotTagEvents(game) {
     const addBtn = document.getElementById('addSlotBtn');
     if (addBtn) {
         addBtn.addEventListener('click', async () => {
+            const slotId = crypto.randomUUID();
             const n = game.slots.length + 1;
             const name = `存档${n}`;
-            game.slots.push({ name, next_backup_number: 1, key_file_patterns: [] });
+            game.slots.push({ id: slotId, name, file_path: '', next_backup_number: 1, key_file_patterns: [] });
             await saveConfigToBackend();
-            selectedSlot = name;
+            selectedSlotId = slotId;
             renderSlotTabs();
             refreshBackupList();
             setTimeout(() => {
-                const newTag = document.querySelector(`.slot-tag[data-slot="${escapeHtml(name)}"]`);
+                const newTag = document.querySelector(`.slot-tag[data-slot-id="${slotId}"]`);
                 if (newTag) startInlineEditSlot(newTag);
             }, 50);
         });
@@ -403,18 +412,23 @@ function bindSlotTagEvents(game) {
 }
 
 function startInlineEditSlot(tag) {
-    const name = tag.dataset.slot;
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
+    if (!game) return;
+    const slotId = tag.dataset.slotId;
+    const slot = game.slots.find(s => s.id === slotId);
+    if (!slot) return;
+    const name = slot.name;
     const input = document.createElement('input');
     input.value = name;
     input.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             const newName = input.value.trim();
-            if (newName && newName !== name) await renameSlot(name, newName);
+            if (newName && newName !== name) await renameSlot(slotId, newName);
         } else if (e.key === 'Escape') { renderSlotTabs(); }
     });
     input.addEventListener('blur', async () => {
         const newName = input.value.trim();
-        if (newName && newName !== name) await renameSlot(name, newName);
+        if (newName && newName !== name) await renameSlot(slotId, newName);
         else renderSlotTabs();
     });
     while (tag.firstChild) tag.removeChild(tag.firstChild);
@@ -422,43 +436,52 @@ function startInlineEditSlot(tag) {
     const closeBtn = document.createElement('span');
     closeBtn.className = 'tag-close';
     closeBtn.dataset.action = 'delete-slot';
-    closeBtn.dataset.slot = name;
+    closeBtn.dataset.slotId = slotId;
     closeBtn.innerHTML = '&times;';
     tag.appendChild(closeBtn);
     input.focus();
     input.select();
 }
 
-async function renameSlot(oldName, newName) {
-    const game = currentConfig.games.find(g => g.name === selectedGame);
+async function renameSlot(slotId, newName) {
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game) return;
     if (game.slots.some(s => s.name === newName)) { alert('该存档位名已存在'); renderSlotTabs(); return; }
-    const slot = game.slots.find(s => s.name === oldName);
+    const slot = game.slots.find(s => s.id === slotId);
     if (slot) slot.name = newName;
-    if (selectedSlot === oldName) selectedSlot = newName;
-    const oldKey = selectedGame + ':' + oldName;
-    const newKey = selectedGame + ':' + newName;
-    if (filePathBySlot[oldKey]) { filePathBySlot[newKey] = filePathBySlot[oldKey]; delete filePathBySlot[oldKey]; }
-    if (currentHashBySlot[oldKey]) { currentHashBySlot[newKey] = currentHashBySlot[oldKey]; delete currentHashBySlot[oldKey]; }
+    // Keys are ID-based, no need to update filePathBySlot / currentHashBySlot
     await saveConfigToBackend();
     renderSlotTabs();
     refreshBackupList();
 }
 
 function restoreFilePath() {
-    const key = selectedGame + ':' + selectedSlot;
-    filePathInput.value = filePathBySlot[key] || '';
+    if (!selectedGameId || !selectedSlotId) { filePathInput.value = ''; return; }
+    const key = selectedGameId + ':' + selectedSlotId;
+    // First check memory
+    if (filePathBySlot[key]) {
+        filePathInput.value = filePathBySlot[key];
+        return;
+    }
+    // Then check config
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
+    if (!game) return;
+    const slot = game.slots.find(s => s.id === selectedSlotId);
+    if (slot && slot.file_path) {
+        filePathBySlot[key] = slot.file_path;
+        filePathInput.value = slot.file_path;
+    }
 }
 
 // ==================== 哈希 ====================
 
 async function refreshCurrentHash() {
-    if (!selectedGame || !selectedSlot) return;
-    const key = selectedGame + ':' + selectedSlot;
+    if (!selectedGameId || !selectedSlotId) return;
+    const key = selectedGameId + ':' + selectedSlotId;
     const fp = filePathBySlot[key];
     if (!fp) return;
-    const game = currentConfig.games.find(g => g.name === selectedGame);
-    const slot = game ? game.slots.find(s => s.name === selectedSlot) : null;
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
+    const slot = game ? game.slots.find(s => s.id === selectedSlotId) : null;
     const patterns = slot ? slot.key_file_patterns : [];
     try {
         const hash = await invoke('compute_hash', { filePath: fp, patterns: patterns });
@@ -472,8 +495,7 @@ browseFileBtn.addEventListener('click', async () => {
     const path = await invoke('pick_file');
     if (path) {
         filePathInput.value = path;
-        const key = selectedGame + ':' + selectedSlot;
-        filePathBySlot[key] = path;
+        saveFilePathToSlot(path);
         await refreshCurrentHash();
         refreshBackupList();
     }
@@ -482,18 +504,16 @@ browseFileBtn.addEventListener('click', async () => {
 rehashBtn.addEventListener('click', async () => {
     const filePath = filePathInput.value.trim();
     if (!filePath) { showBackupError('请先输入或选择存档文件路径'); return; }
-    if (!selectedGame || !selectedSlot) { showBackupError('请先选择游戏和存档位'); return; }
+    if (!selectedGameId || !selectedSlotId) { showBackupError('请先选择游戏和存档位'); return; }
     hideMessages();
-    const key = selectedGame + ':' + selectedSlot;
-    filePathBySlot[key] = filePath;
+    saveFilePathToSlot(filePath);
     await refreshCurrentHash();
     refreshBackupList();
     showBackupSuccess('哈希已重算');
 });
 
 filePathInput.addEventListener('change', async () => {
-    const key = selectedGame + ':' + selectedSlot;
-    filePathBySlot[key] = filePathInput.value.trim();
+    saveFilePathToSlot(filePathInput.value.trim());
     await refreshCurrentHash();
     refreshBackupList();
 });
@@ -502,24 +522,23 @@ filePathInput.addEventListener('change', async () => {
 
 saveBackupBtn.addEventListener('click', async () => {
     hideMessages();
-    const gameName = selectedGame;
-    const slotName = selectedSlot;
+    const gameId = selectedGameId;
+    const slotId = selectedSlotId;
     const filePath = filePathInput.value.trim();
 
-    if (!gameName) { showBackupError('请先选择游戏'); return; }
-    if (!slotName) { showBackupError('请先选择存档位'); return; }
+    if (!gameId) { showBackupError('请先选择游戏'); return; }
+    if (!slotId) { showBackupError('请先选择存档位'); return; }
     if (!filePath) { showBackupError('请输入或选择存档文件路径'); return; }
     if (!currentConfig.backup_root) { showBackupError('请先在设置中配置备份根目录'); return; }
 
     setButtonLoading(saveBackupBtn, '保存中...');
     try {
         await refreshCurrentHash();
-        const key = gameName + ':' + slotName;
-        filePathBySlot[key] = filePath;
+        saveFilePathToSlot(filePath);
 
         const result = await invoke('create_backup', {
-            gameName: gameName,
-            slotName: slotName,
+            gameId: gameId,
+            slotId: slotId,
             filePath: filePath
         });
         if (result.success) {
@@ -539,18 +558,22 @@ saveBackupBtn.addEventListener('click', async () => {
 // ==================== 备份列表 ====================
 
 async function refreshBackupList() {
-    if (!selectedGame || !selectedSlot) {
+    if (!selectedGameId || !selectedSlotId) {
         backupList.innerHTML = '<div class="empty-hint">请先选择游戏和存档位</div>';
         backupListTitle.textContent = '备份记录';
         return;
     }
 
-    backupListTitle.textContent = `备份记录 — ${selectedGame} / ${selectedSlot}`;
+    const game = currentConfig.games.find(g => g.id === selectedGameId);
+    const slot = game ? game.slots.find(s => s.id === selectedSlotId) : null;
+    backupListTitle.textContent = game && slot
+        ? `备份记录 — ${game.name} / ${slot.name}`
+        : '备份记录';
 
     try {
         const backups = await invoke('list_backups', {
-            gameName: selectedGame,
-            slotName: selectedSlot
+            gameId: selectedGameId,
+            slotId: selectedSlotId
         });
 
         if (backups.length === 0) {
@@ -558,7 +581,7 @@ async function refreshBackupList() {
             return;
         }
 
-        const currentHash = currentHashBySlot[selectedGame + ':' + selectedSlot] || '';
+        const currentHash = currentHashBySlot[selectedGameId + ':' + selectedSlotId] || '';
         const hashCounts = {};
         backups.forEach(b => { if (b.content_hash) hashCounts[b.content_hash] = (hashCounts[b.content_hash] || 0) + 1; });
 
@@ -616,8 +639,8 @@ async function handleRestore(folderName) {
     setButtonLoading(saveBackupBtn, '恢复中...');
     try {
         const result = await invoke('restore_backup', {
-            gameName: selectedGame,
-            slotName: selectedSlot,
+            gameId: selectedGameId,
+            slotId: selectedSlotId,
             folderName: folderName,
             skipBackup: false
         });
@@ -630,21 +653,21 @@ async function handleRestore(folderName) {
             if (confirm(`当前存档「${originalPath}」未备份，是否需要先备份再恢复？\n\n确定 = 先备份再恢复\n取消 = 直接覆盖恢复`)) {
                 // 1. 先备份当前文件
                 const backupResult = await invoke('create_backup', {
-                    gameName: selectedGame, slotName: selectedSlot, filePath: originalPath
+                    gameId: selectedGameId, slotId: selectedSlotId, filePath: originalPath
                 });
                 if (!backupResult.success) {
                     alert('备份当前文件失败: ' + backupResult.message);
                 }
                 // 2. 再恢复（此时哈希已匹配，不会再次弹提示）
                 const result2 = await invoke('restore_backup', {
-                    gameName: selectedGame, slotName: selectedSlot,
+                    gameId: selectedGameId, slotId: selectedSlotId,
                     folderName: folderName, skipBackup: false
                 });
                 alert(result2.message);
             } else {
                 // 直接覆盖恢复
                 const result2 = await invoke('restore_backup', {
-                    gameName: selectedGame, slotName: selectedSlot,
+                    gameId: selectedGameId, slotId: selectedSlotId,
                     folderName: folderName, skipBackup: true
                 });
                 alert(result2.message);
@@ -665,8 +688,8 @@ async function handleRenameBackup(folderName, currentDesc) {
     const newDesc = prompt('修改备份描述（时间戳不可改）:', currentDesc || '');
     if (newDesc === null) return;
     const result = await invoke('rename_backup', {
-        gameName: selectedGame,
-        slotName: selectedSlot,
+        gameId: selectedGameId,
+        slotId: selectedSlotId,
         folderName: folderName,
         newDescription: newDesc.trim()
     });
@@ -675,8 +698,8 @@ async function handleRenameBackup(folderName, currentDesc) {
 }
 
 async function handleOpenBackupFolder(folderName) {
-    if (!currentConfig.backup_root || !selectedGame || !selectedSlot) return;
-    const folderPath = `${currentConfig.backup_root}/${selectedGame}/${selectedSlot}/${folderName}`;
+    if (!currentConfig.backup_root || !selectedGameId || !selectedSlotId) return;
+    const folderPath = `${currentConfig.backup_root}/${selectedGameId}/${selectedSlotId}/${folderName}`;
     await invoke('open_folder', { path: folderPath });
 }
 
@@ -684,8 +707,8 @@ async function handleRehashBackup(btn, folderName) {
     setButtonLoading(btn, '...');
     try {
         const result = await invoke('recompute_backup_hash', {
-            gameName: selectedGame,
-            slotName: selectedSlot,
+            gameId: selectedGameId,
+            slotId: selectedSlotId,
             folderName: folderName
         });
         if (result.success) {
@@ -706,8 +729,8 @@ async function handleDeleteBackup(folderName) {
     setButtonLoading(saveBackupBtn, '删除中...');
     try {
         const result = await invoke('delete_backup', {
-            gameName: selectedGame,
-            slotName: selectedSlot,
+            gameId: selectedGameId,
+            slotId: selectedSlotId,
             folderName: folderName
         });
         if (result.success) { refreshBackupList(); }
@@ -723,8 +746,8 @@ async function handleTogglePin(btn, folderName) {
     setButtonLoading(btn, '...');
     try {
         const result = await invoke('toggle_backup_pin', {
-            gameName: selectedGame,
-            slotName: selectedSlot,
+            gameId: selectedGameId,
+            slotId: selectedSlotId,
             folderName: folderName
         });
         if (result.success) refreshBackupList();
@@ -835,7 +858,7 @@ function shortenPath(path) {
 function refreshAll() {
     renderGameTabs();
     renderSlotTabs();
-    if (selectedGame && selectedSlot) {
+    if (selectedGameId && selectedSlotId) {
         restoreFilePath();
         refreshCurrentHash();
         refreshBackupList();
