@@ -134,10 +134,11 @@ function renderGameTabs() {
     const games = getSortedGames();
     gameTabs.innerHTML = games.map(g => {
         const activeClass = g.name === selectedGame ? ' active' : '';
-        const pinnedIcon = g.pinned ? '📌 ' : '';
         return `<button class="game-tab${activeClass}" data-game="${escapeHtml(g.name)}" draggable="true"
-                  title="拖拽排序 | 双击改名${g.pinned ? ' | 已置顶' : ''}">
-                  ${pinnedIcon}${escapeHtml(g.name)}
+                  title="拖拽排序 | 双击改名">
+                  <span class="tab-pin" data-action="pin-game" data-game="${escapeHtml(g.name)}"
+                    style="font-size:0.75rem;color:${g.pinned ? '#fbbf24' : 'rgba(255,255,255,0.2)'}">&#128204;</span>
+                  ${escapeHtml(g.name)}
                   <span class="tab-close" data-action="delete-game" data-game="${escapeHtml(g.name)}">&times;</span>
                 </button>`;
     }).join('') + `<button class="game-tab-add" id="addGameBtn" title="新增游戏">+</button>`;
@@ -157,6 +158,11 @@ function bindGameTabEvents() {
     document.querySelectorAll('.game-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
             if (e.target.dataset.action === 'delete-game') return;
+            if (e.target.dataset.action === 'pin-game') {
+                e.stopPropagation();
+                toggleGamePin(e.target.dataset.game);
+                return;
+            }
             const name = tab.dataset.game;
             if (name !== selectedGame) {
                 selectedGame = name;
@@ -234,7 +240,6 @@ function bindGameTabEvents() {
 
 function startInlineEditGame(tab) {
     const name = tab.dataset.game;
-    const span = tab.querySelector('span') || tab.childNodes[0];
     const input = document.createElement('input');
     input.value = name;
     input.addEventListener('keydown', async (e) => {
@@ -293,6 +298,15 @@ async function handleGameReorder(fromName, toName) {
         if (g) g.sort_order = i;
     });
     renderGameTabs();
+}
+
+async function toggleGamePin(gameName) {
+    const result = await invoke('toggle_game_pin', { gameName: gameName });
+    if (result.success) {
+        const game = currentConfig.games.find(g => g.name === gameName);
+        if (game) game.pinned = !game.pinned;
+        renderGameTabs();
+    }
 }
 
 function updateSlotKey(oldGameName, newGameName) {
@@ -581,6 +595,7 @@ function bindBackupItemEvents() {
 }
 
 async function handleRestore(folderName) {
+    setButtonLoading(saveBackupBtn, '恢复中...');
     try {
         const result = await invoke('restore_backup', {
             gameName: selectedGame,
@@ -595,12 +610,21 @@ async function handleRestore(folderName) {
         } else if (result.message.startsWith('NEED_BACKUP_CONFIRM:')) {
             const originalPath = result.message.split(':').slice(1).join(':');
             if (confirm(`当前存档「${originalPath}」未备份，是否需要先备份再恢复？\n\n确定 = 先备份再恢复\n取消 = 直接覆盖恢复`)) {
+                // 1. 先备份当前文件
+                const backupResult = await invoke('create_backup', {
+                    gameName: selectedGame, slotName: selectedSlot, filePath: originalPath
+                });
+                if (!backupResult.success) {
+                    alert('备份当前文件失败: ' + backupResult.message);
+                }
+                // 2. 再恢复（此时哈希已匹配，不会再次弹提示）
                 const result2 = await invoke('restore_backup', {
                     gameName: selectedGame, slotName: selectedSlot,
-                    folderName: folderName, skipBackup: true
+                    folderName: folderName, skipBackup: false
                 });
                 alert(result2.message);
             } else {
+                // 直接覆盖恢复
                 const result2 = await invoke('restore_backup', {
                     gameName: selectedGame, slotName: selectedSlot,
                     folderName: folderName, skipBackup: true
@@ -614,6 +638,8 @@ async function handleRestore(folderName) {
         }
     } catch (err) {
         alert('恢复失败: ' + err);
+    } finally {
+        resetButton(saveBackupBtn, '保存存档');
     }
 }
 
