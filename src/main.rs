@@ -538,7 +538,7 @@ fn restore_backup(
 
     // 读取 meta.json
     let meta_path = backup_dir.join("meta.json");
-    let (original_path, backup_hash) = if meta_path.exists() {
+    let (original_path, _backup_hash) = if meta_path.exists() {
         std::fs::read_to_string(&meta_path)
             .ok()
             .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
