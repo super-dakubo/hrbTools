@@ -427,87 +427,31 @@ fn create_backup(
 }
 
 #[tauri::command]
-fn list_backups(app: tauri::AppHandle, game_name: String) -> Vec<BackupInfo> {
+fn list_backups(app: tauri::AppHandle, game_name: String, slot_name: String) -> Vec<BackupInfo> {
     let config = load_config(&app);
-    let game_dir = PathBuf::from(&config.backup_root).join(&game_name);
-
-    if !game_dir.exists() {
-        return vec![];
-    }
-
-    let mut backups: Vec<BackupInfo> = match fs::read_dir(&game_dir) {
-        Ok(entries) => entries
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let folder_name = entry.file_name().to_string_lossy().to_string();
-
-                // 跳过非目录项
-                if !entry.file_type().ok()?.is_dir() {
-                    return None;
-                }
-
-                // 读取 meta.json
-                let meta_path = entry.path().join("meta.json");
-                let (display_name, original_file_path) = if meta_path.exists() {
-                    fs::read_to_string(&meta_path)
-                        .ok()
-                        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
-                        .map(|meta| {
-                            (
-                                meta["display_name"]
-                                    .as_str()
-                                    .unwrap_or(&folder_name)
-                                    .to_string(),
-                                meta["original_file_path"]
-                                    .as_str()
-                                    .unwrap_or("")
-                                    .to_string(),
-                            )
-                        })
-                        .unwrap_or_else(|| (folder_name.clone(), String::new()))
-                } else {
-                    (folder_name.clone(), String::new())
-                };
-
-                Some(BackupInfo {
-                    folder_name,
-                    display_name,
-                    created_at: String::new(),
-                    original_file_path,
-                })
-            })
-            .collect(),
-        Err(_) => vec![],
-    };
-
-    // 按文件夹名倒序排列（最新的在前）
-    backups.sort_by(|a, b| b.folder_name.cmp(&a.folder_name));
-    backups
+    list_backups_internal(&config, &game_name, &slot_name)
 }
 
 #[tauri::command]
-fn delete_backup(app: tauri::AppHandle, game_name: String, folder_name: String) -> OpResult {
+fn delete_backup(
+    app: tauri::AppHandle,
+    game_name: String,
+    slot_name: String,
+    folder_name: String,
+) -> OpResult {
     let config = load_config(&app);
-    let backup_dir = PathBuf::from(&config.backup_root)
+    let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_name)
+        .join(&slot_name)
         .join(&folder_name);
 
     if !backup_dir.exists() {
-        return OpResult {
-            success: false,
-            message: "备份不存在".to_string(),
-        };
+        return OpResult { success: false, message: "备份不存在".to_string() };
     }
 
-    match fs::remove_dir_all(&backup_dir) {
-        Ok(_) => OpResult {
-            success: true,
-            message: "备份已删除".to_string(),
-        },
-        Err(e) => OpResult {
-            success: false,
-            message: format!("删除失败: {}", e),
-        },
+    match std::fs::remove_dir_all(&backup_dir) {
+        Ok(_) => OpResult { success: true, message: "备份已删除".to_string() },
+        Err(e) => OpResult { success: false, message: format!("删除失败: {}", e) },
     }
 }
 
@@ -515,92 +459,106 @@ fn delete_backup(app: tauri::AppHandle, game_name: String, folder_name: String) 
 fn rename_backup(
     app: tauri::AppHandle,
     game_name: String,
+    slot_name: String,
     folder_name: String,
-    new_name: String,
+    new_description: String,
 ) -> OpResult {
     let config = load_config(&app);
-    let game_dir = PathBuf::from(&config.backup_root).join(&game_name);
+    let game_dir = std::path::PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&slot_name);
+
     let old_path = game_dir.join(&folder_name);
-    let new_path = game_dir.join(&new_name);
 
     if !old_path.exists() {
-        return OpResult {
-            success: false,
-            message: "备份不存在".to_string(),
-        };
+        return OpResult { success: false, message: "备份不存在".to_string() };
     }
 
+    // 从 folder_name 分离时间戳和描述
+    // 格式: "YYYY-MM-DD HH-MM-SS 描述"
+    let parts: Vec<&str> = folder_name.splitn(3, ' ').collect();
+    if parts.len() < 2 {
+        return OpResult { success: false, message: "备份名格式异常".to_string() };
+    }
+    let timestamp = format!("{} {}", parts[0], parts[1]);
+    let new_folder_name = if new_description.is_empty() {
+        timestamp.clone()
+    } else {
+        format!("{} {}", timestamp, new_description)
+    };
+
+    let new_path = game_dir.join(&new_folder_name);
     if new_path.exists() {
-        return OpResult {
-            success: false,
-            message: "该名称已存在".to_string(),
-        };
+        return OpResult { success: false, message: "该名称已存在".to_string() };
     }
 
-    // 重命名文件夹
-    if let Err(e) = fs::rename(&old_path, &new_path) {
-        return OpResult {
-            success: false,
-            message: format!("重命名失败: {}", e),
-        };
+    if let Err(e) = std::fs::rename(&old_path, &new_path) {
+        return OpResult { success: false, message: format!("重命名失败: {}", e) };
     }
 
-    // 更新 meta.json 中的 display_name
+    // 更新 meta.json 中的 display_name 和 description
     let meta_path = new_path.join("meta.json");
-    if let Ok(json_str) = fs::read_to_string(&meta_path) {
+    if let Ok(json_str) = std::fs::read_to_string(&meta_path) {
         if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            meta["display_name"] = serde_json::Value::String(new_name.clone());
+            let new_display = if new_description.is_empty() {
+                meta["display_name"].as_str().unwrap_or("").split(' ').take(2).collect::<Vec<_>>().join(" ")
+            } else {
+                let time_part = meta["display_name"].as_str().unwrap_or("").split(' ')
+                    .take(2).collect::<Vec<_>>().join(" ");
+                format!("{} {}", time_part, new_description)
+            };
+            meta["display_name"] = serde_json::Value::String(new_display);
+            meta["description"] = serde_json::Value::String(new_description.clone());
             if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
-                let _ = fs::write(&meta_path, new_json);
+                let _ = std::fs::write(&meta_path, new_json);
             }
         }
     }
 
-    OpResult {
-        success: true,
-        message: "重命名成功".to_string(),
-    }
+    OpResult { success: true, message: "重命名成功".to_string() }
 }
 
 #[tauri::command]
-fn restore_backup(app: tauri::AppHandle, game_name: String, folder_name: String) -> OpResult {
+fn restore_backup(
+    app: tauri::AppHandle,
+    game_name: String,
+    slot_name: String,
+    folder_name: String,
+    skip_backup: bool,
+) -> OpResult {
     let config = load_config(&app);
-    let backup_dir = PathBuf::from(&config.backup_root)
+    let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_name)
+        .join(&slot_name)
         .join(&folder_name);
 
     if !backup_dir.exists() {
-        return OpResult {
-            success: false,
-            message: "备份不存在".to_string(),
-        };
+        return OpResult { success: false, message: "备份不存在".to_string() };
     }
 
-    // 读取 meta.json 获取原始路径
+    // 读取 meta.json
     let meta_path = backup_dir.join("meta.json");
-    let original_path = if meta_path.exists() {
-        fs::read_to_string(&meta_path)
+    let (original_path, backup_hash) = if meta_path.exists() {
+        std::fs::read_to_string(&meta_path)
             .ok()
             .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
-            .and_then(|meta| {
-                meta["original_file_path"]
-                    .as_str()
-                    .map(|s| s.to_string())
+            .map(|meta| {
+                (
+                    meta["original_file_path"].as_str().unwrap_or("").to_string(),
+                    meta["content_hash"].as_str().unwrap_or("").to_string(),
+                )
             })
             .unwrap_or_default()
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
     if original_path.is_empty() {
-        return OpResult {
-            success: false,
-            message: "无法获取原始文件路径".to_string(),
-        };
+        return OpResult { success: false, message: "无法获取原始文件路径".to_string() };
     }
 
-    // 找到备份文件夹中的实际文件（排除 meta.json）
-    let backup_file = match fs::read_dir(&backup_dir) {
+    // 找到备份文件
+    let backup_file = match std::fs::read_dir(&backup_dir) {
         Ok(entries) => entries
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
@@ -612,16 +570,34 @@ fn restore_backup(app: tauri::AppHandle, game_name: String, folder_name: String)
 
     let backup_file = match backup_file {
         Some(f) => f,
-        None => {
-            return OpResult {
-                success: false,
-                message: "备份文件夹中无文件".to_string(),
-            };
-        }
+        None => return OpResult { success: false, message: "备份文件夹中无文件".to_string() },
     };
 
-    // 复制文件回原始位置
-    match fs::copy(&backup_file, &original_path) {
+    // 检查当前文件是否已有备份
+    let original = std::path::Path::new(&original_path);
+    if !skip_backup && original.exists() {
+        // 获取当前 slot 的 patterns
+        let patterns: Vec<String> = config.games.iter()
+            .find(|g| g.name == game_name)
+            .and_then(|g| g.slots.iter().find(|s| s.name == slot_name))
+            .map(|s| s.key_file_patterns.clone())
+            .unwrap_or_default();
+
+        let current_hash = compute_hash(original_path.clone(), patterns).unwrap_or_default();
+        let hash_match = list_backups_internal(&config, &game_name, &slot_name)
+            .iter()
+            .any(|b| b.content_hash == current_hash);
+
+        if !hash_match {
+            return OpResult {
+                success: false,
+                message: format!("NEED_BACKUP_CONFIRM:{}", original_path),
+            };
+        }
+    }
+
+    // 复制恢复
+    match std::fs::copy(&backup_file, &original_path) {
         Ok(_) => OpResult {
             success: true,
             message: format!("已恢复到: {}", original_path),
