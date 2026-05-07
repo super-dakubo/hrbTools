@@ -31,6 +31,7 @@ const gameTabs = document.getElementById('gameTabs');
 const slotTabs = document.getElementById('slotTabs');
 const filePathInput = document.getElementById('filePath');
 const browseFileBtn = document.getElementById('browseFileBtn');
+const rehashBtn = document.getElementById('rehashBtn');
 const saveBackupBtn = document.getElementById('saveBackupBtn');
 const backupError = document.getElementById('backupError');
 const backupSuccess = document.getElementById('backupSuccess');
@@ -43,6 +44,7 @@ const settingsOverlay = document.getElementById('settingsOverlay');
 const settingsCloseBtn = document.getElementById('settingsCloseBtn');
 const settingsBackupRoot = document.getElementById('settingsBackupRoot');
 const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
+const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
 
 // ==================== 全局 Tab 切换 ====================
 tabs.forEach(tab => {
@@ -477,6 +479,18 @@ browseFileBtn.addEventListener('click', async () => {
     }
 });
 
+rehashBtn.addEventListener('click', async () => {
+    const filePath = filePathInput.value.trim();
+    if (!filePath) { showBackupError('请先输入或选择存档文件路径'); return; }
+    if (!selectedGame || !selectedSlot) { showBackupError('请先选择游戏和存档位'); return; }
+    hideMessages();
+    const key = selectedGame + ':' + selectedSlot;
+    filePathBySlot[key] = filePath;
+    await refreshCurrentHash();
+    refreshBackupList();
+    showBackupSuccess('哈希已重算');
+});
+
 filePathInput.addEventListener('change', async () => {
     const key = selectedGame + ':' + selectedSlot;
     filePathBySlot[key] = filePathInput.value.trim();
@@ -569,6 +583,7 @@ async function refreshBackupList() {
                 <span class="original-path" title="${escapeHtml(b.original_file_path)}">${escapeHtml(shortenPath(b.original_file_path))}</span>
                 <button class="btn-small" data-action="restore" data-folder="${escapeHtml(b.folder_name)}">恢复</button>
                 <button class="btn-small" data-action="rename-backup" data-folder="${escapeHtml(b.folder_name)}" data-desc="${escapeHtml(b.description || '')}">重命名</button>
+                <button class="btn-small" data-action="open-backup" data-folder="${escapeHtml(b.folder_name)}">打开</button>
                 <button class="btn-danger" data-action="delete-backup" data-folder="${escapeHtml(b.folder_name)}">删除</button>
             </div>`;
         }).join('');
@@ -590,6 +605,7 @@ function bindBackupItemEvents() {
             else if (action === 'rename-backup') await handleRenameBackup(folder, btn.dataset.desc);
             else if (action === 'delete-backup') await handleDeleteBackup(folder);
             else if (action === 'toggle-pin') await handleTogglePin(btn, folder);
+            else if (action === 'open-backup') await handleOpenBackupFolder(folder);
         });
     });
 }
@@ -656,6 +672,12 @@ async function handleRenameBackup(folderName, currentDesc) {
     else { alert('重命名失败: ' + result.message); }
 }
 
+async function handleOpenBackupFolder(folderName) {
+    if (!currentConfig.backup_root || !selectedGame || !selectedSlot) return;
+    const folderPath = `${currentConfig.backup_root}/${selectedGame}/${selectedSlot}/${folderName}`;
+    await invoke('open_folder', { path: folderPath });
+}
+
 async function handleDeleteBackup(folderName) {
     if (!confirm('确定要删除此备份吗？此操作不可恢复。')) return;
     setButtonLoading(saveBackupBtn, '删除中...');
@@ -712,6 +734,14 @@ settingsSetDirBtn.addEventListener('click', async () => {
         await saveConfigToBackend();
         updateSettingsDisplay();
     }
+});
+
+settingsOpenDirBtn.addEventListener('click', async () => {
+    if (!currentConfig.backup_root) {
+        alert('请先设置备份根目录');
+        return;
+    }
+    await invoke('open_folder', { path: currentConfig.backup_root });
 });
 
 function updateSettingsDisplay() {

@@ -742,6 +742,49 @@ fn reorder_games(app: tauri::AppHandle, game_names: Vec<String>) -> OpResult {
     OpResult { success: true, message: "排序已保存".to_string() }
 }
 
+#[tauri::command]
+fn open_folder(path: String) -> OpResult {
+    let path = std::path::Path::new(&path);
+    let target = if path.is_dir() {
+        path.to_path_buf()
+    } else if let Some(parent) = path.parent() {
+        parent.to_path_buf()
+    } else {
+        return OpResult { success: false, message: "无法获取文件夹路径".to_string() };
+    };
+
+    if !target.exists() {
+        return OpResult { success: false, message: "文件夹不存在".to_string() };
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(target.to_string_lossy().as_ref())
+            .spawn()
+            .map(|_| OpResult { success: true, message: "已打开文件夹".to_string() })
+            .unwrap_or(OpResult { success: false, message: "打开文件夹失败".to_string() })
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(target.to_string_lossy().as_ref())
+            .spawn()
+            .map(|_| OpResult { success: true, message: "已打开文件夹".to_string() })
+            .unwrap_or(OpResult { success: false, message: "打开文件夹失败".to_string() })
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(target.to_string_lossy().as_ref())
+            .spawn()
+            .map(|_| OpResult { success: true, message: "已打开文件夹".to_string() })
+            .unwrap_or(OpResult { success: false, message: "打开文件夹失败".to_string() })
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -760,6 +803,7 @@ fn main() {
             toggle_backup_pin,
             toggle_game_pin,
             reorder_games,
+            open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
