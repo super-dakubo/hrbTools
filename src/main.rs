@@ -680,6 +680,68 @@ fn simple_glob_match(pattern: &str, name: &str) -> bool {
     name == pattern
 }
 
+#[tauri::command]
+fn toggle_backup_pin(
+    app: tauri::AppHandle,
+    game_name: String,
+    slot_name: String,
+    folder_name: String,
+) -> OpResult {
+    let config = load_config(&app);
+    let backup_dir = std::path::PathBuf::from(&config.backup_root)
+        .join(&game_name)
+        .join(&slot_name)
+        .join(&folder_name);
+
+    if !backup_dir.exists() {
+        return OpResult { success: false, message: "备份不存在".to_string() };
+    }
+
+    let meta_path = backup_dir.join("meta.json");
+    let current_pinned = std::fs::read_to_string(&meta_path)
+        .ok()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+        .and_then(|meta| meta["pinned"].as_bool())
+        .unwrap_or(false);
+
+    let new_pinned = !current_pinned;
+    if let Ok(json_str) = std::fs::read_to_string(&meta_path) {
+        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            meta["pinned"] = serde_json::Value::Bool(new_pinned);
+            if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
+                let _ = std::fs::write(&meta_path, new_json);
+            }
+        }
+    }
+
+    OpResult {
+        success: true,
+        message: if new_pinned { "已置顶".to_string() } else { "已取消置顶".to_string() },
+    }
+}
+
+#[tauri::command]
+fn toggle_game_pin(app: tauri::AppHandle, game_name: String) -> OpResult {
+    let mut config = load_config(&app);
+    if let Some(game) = config.games.iter_mut().find(|g| g.name == game_name) {
+        game.pinned = !game.pinned;
+    }
+    save_config(&app, &config);
+    OpResult { success: true, message: "已更新".to_string() }
+}
+
+#[tauri::command]
+fn reorder_games(app: tauri::AppHandle, game_names: Vec<String>) -> OpResult {
+    let mut config = load_config(&app);
+    for (i, name) in game_names.iter().enumerate() {
+        if let Some(game) = config.games.iter_mut().find(|g| &g.name == name) {
+            game.sort_order = i as u32;
+        }
+    }
+    save_config(&app, &config);
+    OpResult { success: true, message: "排序已保存".to_string() }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -693,7 +755,11 @@ fn main() {
             list_backups,
             delete_backup,
             rename_backup,
-            restore_backup
+            restore_backup,
+            compute_hash,
+            toggle_backup_pin,
+            toggle_game_pin,
+            reorder_games,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
