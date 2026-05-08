@@ -16,6 +16,7 @@
     --tab-bar-bg: rgba(0,0,0,0.25);
     --accent: #4b8bf4;
     --accent-hover: #5c9af7;
+    --accent-rgb: 75, 139, 244;
     --danger-bg: rgba(239,68,68,0.15);
     --danger-text: #f87171;
     --danger-border: rgba(239,68,68,0.2);
@@ -66,8 +67,9 @@ body.light {
     --input-bg: #fff;
     --titlebar-bg: #fff;
     --tab-bar-bg: rgba(0,0,0,0.03);
-    --accent: #2563eb;
-    --accent-hover: #3b82f6;
+    --accent: #0d9488;
+    --accent-hover: #0f766e;
+    --accent-rgb: 13, 148, 136;
     --danger-bg: rgba(220,38,38,0.08);
     --danger-text: #dc2626;
     --danger-border: rgba(220,38,38,0.25);
@@ -81,6 +83,8 @@ body.light {
 }
 
 /* ==================== 基础重置 ==================== */
+html { font-size: 18px; }
+
 * {
     box-sizing: border-box;
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -246,8 +250,8 @@ input, select {
 
 input:focus, select:focus {
     outline: none;
-    border-color: rgba(100,150,255,0.5);
-    box-shadow: 0 0 0 3px rgba(100,150,255,0.15);
+    border-color: rgba(var(--accent-rgb), 0.5);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
 }
 
 select { cursor: pointer; }
@@ -480,8 +484,8 @@ button:disabled:hover { background: var(--accent); }
 .slot-tag:hover { color: var(--text); }
 
 .slot-tag.active {
-    background: rgba(75,139,244,0.2);
-    border-color: rgba(75,139,244,0.35);
+    background: rgba(var(--accent-rgb), 0.15);
+    border-color: rgba(var(--accent-rgb), 0.3);
     color: var(--text);
 }
 
@@ -799,6 +803,31 @@ button:disabled:hover { background: var(--accent); }
 
 .tz-copy:hover { color: var(--text-secondary); }
 
+.tz-input-wrap {
+    position: relative;
+    flex: 1;
+    display: flex;
+}
+.tz-input-wrap input {
+    padding-right: 20px;
+}
+.tz-clear {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    line-height: 1;
+}
+.tz-clear:hover { color: var(--danger-text); }
+
 .tz-arrows {
     display: flex;
     flex-direction: column;
@@ -892,4 +921,104 @@ button:disabled:hover { background: var(--accent); }
     color: var(--text-dim);
     text-align: center;
     padding: 8px 0;
+}
+
+/* ==================== 文件标签 ==================== */
+.file-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    align-items: center;
+}
+
+.file-tag {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 4px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-tag .tag-close {
+    font-size: 0.85rem;
+    opacity: 0;
+    line-height: 1;
+    transition: opacity 0.15s;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.file-tag:hover .tag-close { opacity: 1; }
+.file-tag .tag-close:hover { color: var(--danger-text); }
+
+.file-tag-add {
+    padding: 4px 10px;
+    color: var(--text-dim);
+    font-size: var(--font-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    background: transparent;
+    border: 1px dashed var(--text-dim);
+    border-radius: var(--radius-pill);
+    width: auto;
+    margin: 0;
+    line-height: 1;
+}
+
+.file-tag-add:hover {
+    color: var(--text-secondary);
+    border-color: var(--text-muted);
+}
+
+/* ==================== 恢复文件选择弹窗 ==================== */
+.restore-file-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.restore-file-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-xs);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: var(--font-sm);
+    color: var(--text);
+}
+
+.restore-file-item:hover {
+    background: var(--surface);
+}
+
+.restore-file-item input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.restore-file-name {
+    flex-shrink: 0;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.restore-file-path {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: var(--font-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
