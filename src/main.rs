@@ -973,40 +973,60 @@ fn recompute_backup_hash(
         return OpResult { success: false, message: "备份不存在".to_string() };
     }
 
-    // 计算备份文件夹中文件（排除 meta.json）的哈希
-    let mut entries: Vec<std::path::PathBuf> = match std::fs::read_dir(&backup_dir) {
-        Ok(entries) => entries
+    let meta_path = backup_dir.join("meta.json");
+    let meta_str = std::fs::read_to_string(&meta_path).unwrap_or_default();
+    let mut meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap_or(serde_json::Value::Null);
+
+    if let Some(files) = meta["files"].as_object_mut() {
+        // 新格式: 逐个文件重算哈希
+        for (name, info) in files.iter_mut() {
+            let file_path = backup_dir.join(name);
+            if file_path.exists() && file_path.is_file() {
+                let new_hash = compute_file_hash(&file_path).unwrap_or_default();
+                info["content_hash"] = serde_json::Value::String(new_hash);
+            }
+        }
+        let summary = files.values()
+            .next()
+            .and_then(|f| f["content_hash"].as_str())
+            .map(|h| h[..8.min(h.len())].to_string())
+            .unwrap_or_default();
+        if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
+            let _ = std::fs::write(&meta_path, new_json);
+        }
+        OpResult { success: true, message: format!("哈希已重算: {}", summary) }
+    } else if meta["content_hash"].as_str().is_some() {
+        // 旧格式兼容: 重算单文件哈希
+        let entries: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
+            .into_iter().flatten()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
             .filter(|e| e.file_name() != "meta.json")
             .map(|e| e.path())
-            .collect(),
-        Err(_) => vec![],
-    };
-    entries.sort();
+            .collect();
 
-    let mut hasher = md5::Md5::new();
-    for entry in &entries {
-        let bytes = std::fs::read(entry).unwrap_or_default();
-        let rel = entry.file_name().unwrap_or_default().to_string_lossy();
-        let mut fh = md5::Md5::new();
-        fh.update(&bytes);
-        hasher.update(format!("{}:{:x}", rel, fh.finalize()).as_bytes());
-    }
-    let content_hash = format!("{:x}", hasher.finalize());
-
-    // 更新 meta.json
-    let meta_path = backup_dir.join("meta.json");
-    if let Ok(json_str) = std::fs::read_to_string(&meta_path) {
-        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            meta["content_hash"] = serde_json::Value::String(content_hash.clone());
-            if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
-                let _ = std::fs::write(&meta_path, new_json);
+        let new_hash = if entries.len() == 1 {
+            compute_file_hash(&entries[0]).unwrap_or_default()
+        } else {
+            let mut hasher = md5::Md5::new();
+            let mut sorted_entries = entries.clone();
+            sorted_entries.sort();
+            for entry in &sorted_entries {
+                let file_hash = compute_file_hash(entry).unwrap_or_default();
+                let rel = entry.file_name().unwrap_or_default().to_string_lossy();
+                hasher.update(format!("{}:{}", rel, file_hash).as_bytes());
             }
-        }
-    }
+            format!("{:x}", hasher.finalize())
+        };
 
-    OpResult { success: true, message: format!("哈希已重算: {}", &content_hash[..8]) }
+        meta["content_hash"] = serde_json::Value::String(new_hash.clone());
+        if let Ok(new_json) = serde_json::to_string_pretty(&meta) {
+            let _ = std::fs::write(&meta_path, new_json);
+        }
+        OpResult { success: true, message: format!("哈希已重算: {}", &new_hash[..8]) }
+    } else {
+        OpResult { success: false, message: "无法读取 meta.json".to_string() }
+    }
 }
 
 // ==================== 时区套件管理 ====================
