@@ -689,19 +689,36 @@ fn restore_backup(
 // ==================== 哈希计算 ====================
 
 #[tauri::command]
-fn compute_hash(file_path: String, patterns: Vec<String>) -> Result<String, String> {
+fn compute_hash(file_paths: Vec<String>, patterns: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut result = std::collections::HashMap::new();
+    for file_path in &file_paths {
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return Err(format!("路径不存在: {}", file_path));
+        }
+        let file_name = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| file_path.clone());
+        let hash = if path.is_file() {
+            compute_file_hash(path)?
+        } else {
+            compute_dir_hash(path, &patterns)?
+        };
+        result.insert(file_name, hash);
+    }
+    Ok(result)
+}
+
+fn compute_single_hash(file_path: String, patterns: Vec<String>) -> Result<String, String> {
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
         return Err(format!("路径不存在: {}", file_path));
     }
-
-    let hash = if path.is_file() {
-        compute_file_hash(path)?
+    if path.is_file() {
+        compute_file_hash(path)
     } else {
-        compute_dir_hash(path, &patterns)?
-    };
-
-    Ok(hash)
+        compute_dir_hash(path, &patterns)
+    }
 }
 
 fn compute_file_hash(path: &std::path::Path) -> Result<String, String> {
