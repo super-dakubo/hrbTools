@@ -681,22 +681,22 @@ saveBackupBtn.addEventListener('click', async () => {
     hideMessages();
     const gameId = selectedGameId;
     const slotId = selectedSlotId;
-    const filePath = filePathInput.value.trim();
+    const fps = getCurrentFilePaths();
 
     if (!gameId) { showBackupError('请先选择游戏'); return; }
     if (!slotId) { showBackupError('请先选择存档位'); return; }
-    if (!filePath) { showBackupError('请输入或选择存档文件路径'); return; }
+    if (fps.length === 0) { showBackupError('请先添加存档文件'); return; }
     if (!currentConfig.backup_root) { showBackupError('请先在设置中配置备份根目录'); return; }
 
     setButtonLoading(saveBackupBtn, '保存中...');
     try {
         await refreshCurrentHashes();
-        setCurrentFilePaths([filePath]);
+        setCurrentFilePaths(fps);
 
         const result = await invoke('create_backup', {
             gameId: gameId,
             slotId: slotId,
-            filePath: filePath
+            filePaths: fps
         });
         if (result.success) {
             showBackupSuccess(result.message);
@@ -706,7 +706,7 @@ saveBackupBtn.addEventListener('click', async () => {
             showBackupError(result.message);
         }
     } catch (err) {
-        showBackupError(`备份失败: ${err}`);
+        showBackupError('备份失败: ' + err);
     } finally {
         resetButton(saveBackupBtn, '保存存档');
     }
@@ -738,14 +738,14 @@ async function refreshBackupList() {
             return;
         }
 
-        const currentHash = currentHashesBySlot[selectedGameId + ':' + selectedSlotId] || '';
+        const currentHashes = currentHashesBySlot[selectedGameId + ':' + selectedSlotId] || {};
         const hashCounts = {};
         backups.forEach(b => { if (b.content_hash) hashCounts[b.content_hash] = (hashCounts[b.content_hash] || 0) + 1; });
 
         backupList.innerHTML = backups.map(b => {
             let extraClass = '';
             let badgeHtml = '';
-            const isCurrentMatch = currentHash && b.content_hash === currentHash;
+            const isCurrentMatch = currentHashes && Object.values(currentHashes).includes(b.content_hash);
             const isDuplicate = !isCurrentMatch && b.content_hash && hashCounts[b.content_hash] > 1;
 
             if (isCurrentMatch) {
@@ -799,35 +799,34 @@ async function handleRestore(folderName) {
             gameId: selectedGameId,
             slotId: selectedSlotId,
             folderName: folderName,
-            skipBackup: false
+            skipBackup: false,
+            selectedFiles: null
         });
+
         if (result.success) {
             alert(result.message);
             await refreshCurrentHashes();
             refreshBackupList();
+        } else if (result.message.startsWith('SELECT_FILES:')) {
+            const fileEntries = result.message.split(':').slice(1).join(':').split(';;');
+            const files = fileEntries.map(e => {
+                const parts = e.split('|');
+                return { name: parts[0], path: parts.slice(1).join('|') };
+            }).filter(f => f.name);
+            showRestoreFileModal(files, folderName);
         } else if (result.message.startsWith('NEED_BACKUP_CONFIRM:')) {
             const originalPath = result.message.split(':').slice(1).join(':');
-            if (confirm(`当前存档「${originalPath}」未备份，是否需要先备份再恢复？\n\n确定 = 先备份再恢复\n取消 = 直接覆盖恢复`)) {
-                // 1. 先备份当前文件
+            if (confirm('当前存档「' + originalPath + '」未备份，是否需要先备份再恢复？\n\n确定 = 先备份再恢复\n取消 = 直接覆盖恢复')) {
                 const backupResult = await invoke('create_backup', {
-                    gameId: selectedGameId, slotId: selectedSlotId, filePath: originalPath
+                    gameId: selectedGameId, slotId: selectedSlotId,
+                    filePaths: getCurrentFilePaths()
                 });
-                if (!backupResult.success) {
+                if (!backupResult.success && !backupResult.message.startsWith('SELECT_FILES:')) {
                     alert('备份当前文件失败: ' + backupResult.message);
                 }
-                // 2. 再恢复（此时哈希已匹配，不会再次弹提示）
-                const result2 = await invoke('restore_backup', {
-                    gameId: selectedGameId, slotId: selectedSlotId,
-                    folderName: folderName, skipBackup: false
-                });
-                alert(result2.message);
+                await doRestoreWithFileSelect(folderName);
             } else {
-                // 直接覆盖恢复
-                const result2 = await invoke('restore_backup', {
-                    gameId: selectedGameId, slotId: selectedSlotId,
-                    folderName: folderName, skipBackup: true
-                });
-                alert(result2.message);
+                await doRestoreWithFileSelect(folderName, true);
             }
             await refreshCurrentHashes();
             refreshBackupList();
@@ -839,6 +838,102 @@ async function handleRestore(folderName) {
     } finally {
         resetButton(saveBackupBtn, '保存存档');
     }
+}
+
+async function doRestoreWithFileSelect(folderName, skipBackup) {
+    const result = await invoke('restore_backup', {
+        gameId: selectedGameId,
+        slotId: selectedSlotId,
+        folderName: folderName,
+        skipBackup: skipBackup || false,
+        selectedFiles: null
+    });
+    if (result.success) {
+        alert(result.message);
+    } else if (result.message.startsWith('SELECT_FILES:')) {
+        const fileEntries = result.message.split(':').slice(1).join(':').split(';;');
+        const files = fileEntries.map(e => {
+            const parts = e.split('|');
+            return { name: parts[0], path: parts.slice(1).join('|') };
+        }).filter(f => f.name);
+        showRestoreFileModal(files, folderName);
+    } else {
+        alert('恢复失败: ' + result.message);
+    }
+}
+
+// ==================== 恢复文件选择弹窗 ====================
+
+function showRestoreFileModal(files, folderName) {
+    const old = document.getElementById('restoreOverlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'restoreOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = '<div class="modal" style="width:420px;">'
+        + '<div class="modal-header">'
+            + '<span class="modal-title">选择要恢复的文件</span>'
+            + '<button class="modal-close" id="restoreCloseBtn">&times;</button>'
+        + '</div>'
+        + '<div class="modal-body">'
+            + '<div class="restore-file-list">'
+                + files.map((f, i) => '<label class="restore-file-item">'
+                    + '<input type="checkbox" data-file="' + escapeHtml(f.name) + '" checked>'
+                    + '<span class="restore-file-name">' + escapeHtml(f.name) + '</span>'
+                    + '<span class="restore-file-path">' + escapeHtml(shortenPath(f.path)) + '</span>'
+                + '</label>').join('')
+            + '</div>'
+            + '<div style="margin-top:12px;display:flex;gap:8px;">'
+                + '<button id="restoreSelectAll" class="btn-small" style="flex:0 0 auto;">全选</button>'
+                + '<button id="restoreDeselectAll" class="btn-small" style="flex:0 0 auto;">全不选</button>'
+                + '<button id="restoreConfirmBtn" style="flex:1;">恢复</button>'
+            + '</div>'
+        + '</div>'
+    + '</div>';
+    document.querySelector('.container').appendChild(overlay);
+
+    const close = function() { overlay.remove(); };
+    overlay.querySelector('#restoreCloseBtn').addEventListener('click', close);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+
+    overlay.querySelector('#restoreSelectAll').addEventListener('click', function() {
+        overlay.querySelectorAll('.restore-file-item input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+    });
+    overlay.querySelector('#restoreDeselectAll').addEventListener('click', function() {
+        overlay.querySelectorAll('.restore-file-item input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+    });
+
+    overlay.querySelector('#restoreConfirmBtn').addEventListener('click', async function() {
+        var selected = [];
+        overlay.querySelectorAll('.restore-file-item input[type="checkbox"]:checked').forEach(function(cb) {
+            selected.push(cb.dataset.file);
+        });
+        if (selected.length === 0) { alert('请至少选择一个文件'); return; }
+        close();
+        setButtonLoading(saveBackupBtn, '恢复中...');
+        try {
+            var result = await invoke('restore_backup', {
+                gameId: selectedGameId,
+                slotId: selectedSlotId,
+                folderName: folderName,
+                skipBackup: true,
+                selectedFiles: selected
+            });
+            if (result.success) {
+                alert(result.message);
+                await refreshCurrentHashes();
+                refreshBackupList();
+            } else {
+                alert('恢复失败: ' + result.message);
+            }
+        } catch (err) {
+            alert('恢复失败: ' + err);
+        } finally {
+            resetButton(saveBackupBtn, '保存存档');
+        }
+    });
 }
 
 async function handleRenameBackup(folderName, currentDesc) {
