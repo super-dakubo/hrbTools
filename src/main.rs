@@ -394,7 +394,7 @@ fn create_backup(
     app: tauri::AppHandle,
     game_id: String,
     slot_id: String,
-    file_path: String,
+    file_paths: Vec<String>,
 ) -> OpResult {
     let mut config = load_config(&app);
 
@@ -406,22 +406,25 @@ fn create_backup(
         };
     }
 
-    // 2. 检查源文件
-    let source = std::path::PathBuf::from(&file_path);
-    if !source.exists() {
+    if file_paths.is_empty() {
         return OpResult {
             success: false,
-            message: format!("文件不存在: {}", file_path),
+            message: "请先添加存档文件".to_string(),
         };
     }
 
-    // 3. 获取文件名
-    let file_name = match source.file_name() {
-        Some(name) => name.to_string_lossy().to_string(),
-        None => return OpResult { success: false, message: "无法获取文件名".to_string() },
-    };
+    // 2. 检查所有源文件存在
+    for fp in &file_paths {
+        let source = std::path::PathBuf::from(fp);
+        if !source.exists() {
+            return OpResult {
+                success: false,
+                message: format!("文件不存在: {}", fp),
+            };
+        }
+    }
 
-    // 4. 找到对应的 slot，获取序号和 patterns
+    // 3. 找到对应的 slot
     let slot = match config.games.iter().find(|g| g.id == game_id) {
         Some(game) => match game.slots.iter().find(|s| s.id == slot_id) {
             Some(s) => s.clone(),
@@ -432,31 +435,58 @@ fn create_backup(
 
     let backup_number = slot.next_backup_number;
 
-    // 5. 计算哈希
-    let content_hash = match compute_hash(file_path.clone(), slot.key_file_patterns.clone()) {
-        Ok(h) => h,
-        Err(e) => return OpResult { success: false, message: format!("计算哈希失败: {}", e) },
-    };
+    // 4. 计算所有文件哈希
+    let mut file_hashes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for fp in &file_paths {
+        let path = std::path::Path::new(fp);
+        let file_name = path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| fp.clone());
+        let hash = match compute_single_hash(fp.clone(), slot.key_file_patterns.clone()) {
+            Ok(h) => h,
+            Err(e) => return OpResult { success: false, message: format!("计算哈希失败: {}", e) },
+        };
+        file_hashes.insert(file_name, hash);
+    }
 
-    // 6. 检查最新备份哈希（去重）
+    // 5. 去重检查: 取最新备份，逐一比对每个文件的哈希
     let existing = list_backups_internal(&config, &game_id, &slot_id);
     if let Some(latest) = existing.first() {
-        if latest.content_hash == content_hash {
-            return OpResult {
-                success: false,
-                message: "存档未变化，无需重复备份".to_string(),
-            };
+        let meta_path = std::path::PathBuf::from(&config.backup_root)
+            .join(&game_id).join(&slot_id).join(&latest.folder_name).join("meta.json");
+        if let Ok(meta_str) = std::fs::read_to_string(&meta_path) {
+            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&meta_str) {
+                // 检查新格式 "files"
+                let all_match = if let Some(old_files) = meta["files"].as_object() {
+                    file_hashes.iter().all(|(name, hash)| {
+                        old_files.get(name)
+                            .and_then(|f| f["content_hash"].as_str())
+                            .map(|h| h == hash)
+                            .unwrap_or(false)
+                    }) && file_hashes.len() == old_files.len()
+                } else {
+                    // 旧格式: 单文件比对
+                    file_hashes.len() == 1
+                        && meta["content_hash"].as_str().map(|h| h == file_hashes.values().next().unwrap()).unwrap_or(false)
+                };
+                if all_match {
+                    return OpResult {
+                        success: false,
+                        message: "存档未变化，无需重复备份".to_string(),
+                    };
+                }
+            }
         }
     }
 
-    // 7. 生成备份文件夹名
+    // 6. 生成备份文件夹名
     let now = chrono::Local::now();
     let timestamp_part = now.format("%Y-%m-%d %H-%M-%S").to_string();
     let folder_name = format!("{} {}", timestamp_part, backup_number);
     let display_name = now.format("%Y-%m-%d %H:%M:%S").to_string();
     let display_name_full = format!("{} {}", display_name, backup_number);
 
-    // 8. 创建备份目录
+    // 7. 创建备份目录
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
         .join(&slot_id)
@@ -469,27 +499,38 @@ fn create_backup(
         };
     }
 
-    // 9. 复制文件
-    let dest = backup_dir.join(&file_name);
-    if let Err(e) = std::fs::copy(&source, &dest) {
-        return OpResult {
-            success: false,
-            message: format!("复制文件失败: {}", e),
-        };
+    // 8. 复制所有文件 + 构建 files 元数据
+    let mut files_meta = serde_json::Map::new();
+    for fp in &file_paths {
+        let source = std::path::Path::new(fp);
+        let file_name = source.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| fp.clone());
+        let dest = backup_dir.join(&file_name);
+        if let Err(e) = std::fs::copy(source, &dest) {
+            return OpResult {
+                success: false,
+                message: format!("复制文件失败: {}", e),
+            };
+        }
+        let hash = file_hashes.get(&file_name).cloned().unwrap_or_default();
+        files_meta.insert(file_name.clone(), serde_json::json!({
+            "original_path": fp,
+            "content_hash": hash,
+        }));
     }
 
-    // 10. 写入 meta.json
+    // 9. 写入 meta.json (新格式)
     let meta = serde_json::json!({
-        "original_file_path": file_path,
         "display_name": display_name_full,
         "description": backup_number.to_string(),
-        "content_hash": content_hash,
+        "files": files_meta,
     });
     if let Ok(json) = serde_json::to_string_pretty(&meta) {
         let _ = std::fs::write(backup_dir.join("meta.json"), json);
     }
 
-    // 11. 自增序号并保存
+    // 10. 自增序号并保存
     if let Some(game) = config.games.iter_mut().find(|g| g.id == game_id) {
         if let Some(s) = game.slots.iter_mut().find(|s| s.id == slot_id) {
             s.next_backup_number += 1;
