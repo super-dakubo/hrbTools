@@ -5,8 +5,8 @@ const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args);
 let currentConfig = { backup_root: '', games: [], timezone_sets: [] };
 let selectedGameId = '';
 let selectedSlotId = '';
-let filePathBySlot = {};       // { "gameId:slotId": "D:/saves/file.dat" }
-let currentHashBySlot = {};    // { "gameId:slotId": "abc123" }
+let filePathsBySlot = {};      // { "gameId:slotId": ["D:/saves/save.dat", "D:/saves/config.ini"] }
+let currentHashesBySlot = {};  // { "gameId:slotId": { "save.dat": "abc", "config.ini": "def" } }
 
 // ==================== DOM 引用 ====================
 
@@ -27,6 +27,7 @@ const closeBtn = document.getElementById('closeBtn');
 const gameTabs = document.getElementById('gameTabs');
 const slotTabs = document.getElementById('slotTabs');
 const filePathInput = document.getElementById('filePath');
+const fileTagsContainer = document.getElementById('fileTags');
 const browseFileBtn = document.getElementById('browseFileBtn');
 const rehashBtn = document.getElementById('rehashBtn');
 const saveBackupBtn = document.getElementById('saveBackupBtn');
@@ -255,8 +256,8 @@ async function loadConfig() {
     }
     renderGameTabs();
     renderSlotTabs();
-    restoreFilePath();
-    await refreshCurrentHash();
+    restoreFilePaths();
+    await refreshCurrentHashes();
     refreshBackupList();
 }
 
@@ -264,18 +265,76 @@ async function saveConfigToBackend() {
     await invoke('set_config', { config: currentConfig });
 }
 
-// ==================== 文件路径持久化 ====================
+// ==================== 文件标签管理 ====================
 
-function saveFilePathToSlot(filePath) {
+function getCurrentFilePaths() {
+    if (!selectedGameId || !selectedSlotId) return [];
+    const key = selectedGameId + ':' + selectedSlotId;
+    return filePathsBySlot[key] || [];
+}
+
+function setCurrentFilePaths(paths) {
     if (!selectedGameId || !selectedSlotId) return;
     const key = selectedGameId + ':' + selectedSlotId;
-    filePathBySlot[key] = filePath;
+    filePathsBySlot[key] = paths;
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game) return;
     const slot = game.slots.find(s => s.id === selectedSlotId);
     if (!slot) return;
-    slot.file_paths = [filePath];
+    slot.file_paths = paths;
     saveConfigToBackend();
+}
+
+function renderFileTags() {
+    if (!fileTagsContainer) return;
+    const paths = getCurrentFilePaths();
+    if (paths.length === 0) {
+        fileTagsContainer.innerHTML = '<span class="empty-hint" style="padding:0.3rem 0;font-size:0.78rem;">暂无文件，点击 + 添加</span>'
+            + '<button class="file-tag-add" id="addFileBtn" title="添加文件">+</button>';
+    } else {
+        fileTagsContainer.innerHTML = paths.map((fp, i) => {
+            const fileName = fp.replace(/\\/g, '/').split('/').pop() || fp;
+            return '<span class="file-tag" data-index="' + i + '" title="' + escapeHtml(fp) + '">'
+                + escapeHtml(fileName)
+                + '<span class="tag-close" data-action="remove-file" data-index="' + i + '">&times;</span>'
+                + '</span>';
+        }).join('') + '<button class="file-tag-add" id="addFileBtn" title="添加文件">+</button>';
+    }
+
+    bindFileTagEvents();
+}
+
+function bindFileTagEvents() {
+    const addBtn = document.getElementById('addFileBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', async () => {
+            const startDir = (currentConfig.backup_root || null);
+            const path = await invoke('pick_file', { startDir });
+            if (path) {
+                const paths = getCurrentFilePaths();
+                if (!paths.includes(path)) {
+                    paths.push(path);
+                    setCurrentFilePaths(paths);
+                    renderFileTags();
+                    await refreshCurrentHashes();
+                    refreshBackupList();
+                }
+            }
+        });
+    }
+
+    fileTagsContainer.querySelectorAll('[data-action="remove-file"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const idx = parseInt(btn.dataset.index, 10);
+            const paths = getCurrentFilePaths();
+            paths.splice(idx, 1);
+            setCurrentFilePaths(paths);
+            renderFileTags();
+            await refreshCurrentHashes();
+            refreshBackupList();
+        });
+    });
 }
 
 // ==================== 游戏标签渲染 ====================
@@ -319,7 +378,7 @@ function bindGameTabEvents() {
                 const game = currentConfig.games.find(g => g.id === gameId);
                 if (game && game.slots.length > 0) {
                     selectedSlotId = game.slots[0].id;
-                    restoreFilePath();
+                    restoreFilePaths();
                 }
                 renderGameTabs();
                 renderSlotTabs();
@@ -420,7 +479,7 @@ async function renameGame(gameId, newName) {
     }
     const game = currentConfig.games.find(g => g.id === gameId);
     if (game) game.name = newName;
-    // Keys are ID-based, no need to update filePathBySlot / currentHashBySlot
+    // Keys are ID-based, no need to update filePathsBySlot / currentHashesBySlot
     await saveConfigToBackend();
     renderGameTabs();
     renderSlotTabs();
@@ -466,7 +525,7 @@ function bindSlotTagEvents(game) {
             const slotId = tag.dataset.slotId;
             if (slotId !== selectedSlotId) {
                 selectedSlotId = slotId;
-                restoreFilePath();
+                restoreFilePaths();
                 renderSlotTabs();
                 refreshBackupList();
             }
@@ -551,73 +610,69 @@ async function renameSlot(slotId, newName) {
     if (game.slots.some(s => s.name === newName)) { alert('该存档位名已存在'); renderSlotTabs(); return; }
     const slot = game.slots.find(s => s.id === slotId);
     if (slot) slot.name = newName;
-    // Keys are ID-based, no need to update filePathBySlot / currentHashBySlot
+    // Keys are ID-based, no need to update filePathsBySlot / currentHashesBySlot
     await saveConfigToBackend();
     renderSlotTabs();
     refreshBackupList();
 }
 
-function restoreFilePath() {
-    if (!selectedGameId || !selectedSlotId) { filePathInput.value = ''; return; }
+function restoreFilePaths() {
+    if (!selectedGameId || !selectedSlotId) { renderFileTags(); return; }
     const key = selectedGameId + ':' + selectedSlotId;
-    // First check memory
-    if (filePathBySlot[key]) {
-        filePathInput.value = filePathBySlot[key];
+    if (filePathsBySlot[key] && filePathsBySlot[key].length > 0) {
+        renderFileTags();
         return;
     }
-    // Then check config
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game) return;
     const slot = game.slots.find(s => s.id === selectedSlotId);
     if (slot && slot.file_paths && slot.file_paths.length > 0) {
-        filePathBySlot[key] = slot.file_paths[0];
-        filePathInput.value = slot.file_paths[0];
+        filePathsBySlot[key] = [...slot.file_paths];
+        renderFileTags();
     }
 }
 
 // ==================== 哈希 ====================
 
-async function refreshCurrentHash() {
+async function refreshCurrentHashes() {
     if (!selectedGameId || !selectedSlotId) return;
     const key = selectedGameId + ':' + selectedSlotId;
-    const fp = filePathBySlot[key];
-    if (!fp) return;
+    const fps = filePathsBySlot[key];
+    if (!fps || fps.length === 0) return;
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     const slot = game ? game.slots.find(s => s.id === selectedSlotId) : null;
     const patterns = slot ? slot.key_file_patterns : [];
     try {
-        const hash = await invoke('compute_hash', { filePath: fp, patterns: patterns });
-        currentHashBySlot[key] = hash;
+        const hashes = await invoke('compute_hash', { filePaths: fps, patterns: patterns });
+        currentHashesBySlot[key] = hashes;
     } catch (e) { /* source might not exist, ignore */ }
 }
 
 // ==================== 文件选择 ====================
 
 browseFileBtn.addEventListener('click', async () => {
-    const path = await invoke('pick_file');
+    const startDir = (currentConfig.backup_root || null);
+    const path = await invoke('pick_file', { startDir });
     if (path) {
-        filePathInput.value = path;
-        saveFilePathToSlot(path);
-        await refreshCurrentHash();
-        refreshBackupList();
+        const paths = getCurrentFilePaths();
+        if (!paths.includes(path)) {
+            paths.push(path);
+            setCurrentFilePaths(paths);
+            renderFileTags();
+            await refreshCurrentHashes();
+            refreshBackupList();
+        }
     }
 });
 
 rehashBtn.addEventListener('click', async () => {
-    const filePath = filePathInput.value.trim();
-    if (!filePath) { showBackupError('请先输入或选择存档文件路径'); return; }
+    const fps = getCurrentFilePaths();
+    if (fps.length === 0) { showBackupError('请先添加存档文件'); return; }
     if (!selectedGameId || !selectedSlotId) { showBackupError('请先选择游戏和存档位'); return; }
     hideMessages();
-    saveFilePathToSlot(filePath);
-    await refreshCurrentHash();
+    await refreshCurrentHashes();
     refreshBackupList();
     showBackupSuccess('哈希已重算');
-});
-
-filePathInput.addEventListener('change', async () => {
-    saveFilePathToSlot(filePathInput.value.trim());
-    await refreshCurrentHash();
-    refreshBackupList();
 });
 
 // ==================== 备份操作 ====================
@@ -635,8 +690,8 @@ saveBackupBtn.addEventListener('click', async () => {
 
     setButtonLoading(saveBackupBtn, '保存中...');
     try {
-        await refreshCurrentHash();
-        saveFilePathToSlot(filePath);
+        await refreshCurrentHashes();
+        setCurrentFilePaths([filePath]);
 
         const result = await invoke('create_backup', {
             gameId: gameId,
@@ -645,7 +700,7 @@ saveBackupBtn.addEventListener('click', async () => {
         });
         if (result.success) {
             showBackupSuccess(result.message);
-            await refreshCurrentHash();
+            await refreshCurrentHashes();
             refreshBackupList();
         } else {
             showBackupError(result.message);
@@ -683,7 +738,7 @@ async function refreshBackupList() {
             return;
         }
 
-        const currentHash = currentHashBySlot[selectedGameId + ':' + selectedSlotId] || '';
+        const currentHash = currentHashesBySlot[selectedGameId + ':' + selectedSlotId] || '';
         const hashCounts = {};
         backups.forEach(b => { if (b.content_hash) hashCounts[b.content_hash] = (hashCounts[b.content_hash] || 0) + 1; });
 
@@ -748,7 +803,7 @@ async function handleRestore(folderName) {
         });
         if (result.success) {
             alert(result.message);
-            await refreshCurrentHash();
+            await refreshCurrentHashes();
             refreshBackupList();
         } else if (result.message.startsWith('NEED_BACKUP_CONFIRM:')) {
             const originalPath = result.message.split(':').slice(1).join(':');
@@ -774,7 +829,7 @@ async function handleRestore(folderName) {
                 });
                 alert(result2.message);
             }
-            await refreshCurrentHash();
+            await refreshCurrentHashes();
             refreshBackupList();
         } else {
             alert('恢复失败: ' + result.message);
@@ -815,7 +870,7 @@ async function handleRehashBackup(btn, folderName) {
             folderName: folderName
         });
         if (result.success) {
-            await refreshCurrentHash();
+            await refreshCurrentHashes();
             refreshBackupList();
         } else {
             alert('重算失败: ' + result.message);
@@ -991,8 +1046,8 @@ function refreshAll() {
     renderGameTabs();
     renderSlotTabs();
     if (selectedGameId && selectedSlotId) {
-        restoreFilePath();
-        refreshCurrentHash();
+        restoreFilePaths();
+        refreshCurrentHashes();
         refreshBackupList();
     }
 }
