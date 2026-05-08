@@ -2,91 +2,105 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **代码开发前必须阅读 [LESSONS.md](./LESSONS.md)** — 记录了本项目反复踩过的坑和硬性约束。
+> **代码开发前必须阅读 [LESSONS.md](./LESSONS.md)** — 本项目反复踩过的坑和硬性约束。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
 
 ## 常用命令
 
-- `cargo tauri dev` – 启动 Tauri 开发服务器（Rust 后端 + 网页前端）
-- `cargo tauri build` – 为当前平台构建生产版本二进制文件
+- `cargo tauri dev` – 启动 Tauri 开发服务器
+- `cargo tauri build` – 构建生产版本
 - `cargo build` – 仅编译 Rust 后端
 - `cargo test` – 运行测试（当前无测试用例，仅验证编译）
 
 ## 架构概述
 
-Tauri 2.0 桌面应用，包含两个功能模块，通过顶部 Tab 标签页切换：
-
-- **时间转换**（默认 Tab）— 日期时间字符串 → Unix 时间戳
-- **存档管理** — 游戏存档备份、列表管理、恢复
-
-代码保持扁平结构：`src/main.rs`（Rust 后端）、`src/index.html`、`src/main.js`、`src/styles.css`（前端）。
+Tauri 2.0 桌面应用，**无边框窗口**（自定义标题栏），左侧 Tab 切换两个功能面板，右上角齿轮设置弹窗。前端无 npm/打包器，纯原生 HTML/CSS/JS。
 
 ### 后端（src/main.rs）
 
-全部代码在单个文件中，用分隔注释 `// ====================` 区分区块。包含 11 个 `#[tauri::command]`：
+全部 Rust 代码在单个文件中，用 `// ====================` 分隔区块。约 22 个 `#[tauri::command]`：
 
 | 分组 | 命令 | 说明 |
 |------|------|------|
-| 时间转换 | `convert_to_timestamp` | 时间字符串 → 毫秒时间戳 |
-| 时间转换 | `convert_to_datetime` | 毫秒时间戳 → 时间字符串（双向转换） |
-| 配置 | `get_config`, `set_config` | 读写持久化配置到 `config.json`（存储在 Tauri app data 目录） |
-| 文件对话框 | `pick_file`, `pick_directory` | 调用系统原生文件/目录选择器（基于 `rfd` crate） |
-| 备份操作 | `create_backup` | 复制文件到 `备份根目录/游戏名/时间戳文件夹/`，写入 `meta.json` |
-| 备份管理 | `list_backups`, `delete_backup`, `rename_backup`, `restore_backup` | 列出/删除/重命名/恢复备份 |
+| 时间转换 | `convert_to_timestamp`, `convert_to_datetime` | 双向时间转换（多时区套件） |
+| 配置 | `get_config`, `set_config` | 读写 `config.json`（存于 `%APPDATA%/com.hrbTools.app/`） |
+| 文件对话框 | `pick_file`, `pick_directory` | 系统原生选择器（`rfd` crate） |
+| 备份操作 | `create_backup`, `list_backups`, `delete_backup`, `rename_backup`, `restore_backup` | 备份 CRUD，参数含 `gameId`/`slotId` |
+| 哈希 | `compute_hash`, `recompute_backup_hash` | MD5 去重（`md-5` crate） |
+| 置顶 | `toggle_backup_pin`, `toggle_game_pin` | 游戏/备份置顶切换 |
+| 文件管理 | `open_folder` | 系统文件管理器打开目录 |
+| 时区套件 | `add_timezone_set`, `remove_timezone_set`, `update_timezone_set`, `toggle_timezone_pin` | 多时区转换套件管理 |
+| 窗口 | `window_minimize`, `window_toggle_maximize`, `window_close` | 自定义标题栏窗口控制 |
 
-关键数据结构：`AppConfig`（备份根目录 + 游戏列表）、`BackupInfo`（文件夹名、显示名、原始路径）、`OpResult`（操作结果）。
+**关键数据结构：**
 
-需要 `use chrono::TimeZone` trait 才能调用 `from_local_datetime`。
+- `AppConfig` — `backup_root`、`games: Vec<GameConfig>`、`timezone_sets: Vec<TimezoneSet>`、`theme: String`
+- `GameConfig` — `id`（UUID）、`name`、`slots: Vec<SlotConfig>`、`pinned`
+- `SlotConfig` — `id`（UUID）、`name`、`file_path`、`next_backup_number`、`key_file_patterns`
+- `TimezoneSet` — `id`（"beijing" 或 UUID）、`timezone`、`datetime_format`、`pinned`、`sort_order`
+- `BackupInfo` — `folder_name`、`display_name`、`description`、`original_file_path`、`content_hash`、`pinned`
+- `OpResult` — `success`、`message`
 
 ### 前端
 
-- **index.html** — Tab 栏 + 两个面板（`#panel-convert` / `#panel-backup`），通过 `.panel.active` 控制显示
-- **main.js** — 分区组织：Tab 切换、时间转换、配置管理、游戏管理、文件选择、备份操作、存档列表、备份管理操作、工具函数。直接使用 `window.__TAURI_INTERNALS__.invoke()` 调用后端（无 npm 依赖），详细命名规则见下文"命名约定"
-- **styles.css** — 按组件分区：Tab 栏、面板、共用组件、时间转换、消息提示、存档管理、存档列表
+- **index.html** — 自定义标题栏（`#title-bar`）+ 设置弹窗（`#settingsOverlay`）+ 左侧 Tab 栏 + 时间转换面板（`#timezoneSets`）+ 存档管理面板（双层游戏/存档位标签 + 备份列表）
+- **main.js** — IPC 封装 (`window.__TAURI_INTERNALS__.invoke`)；时区套件渲染/事件委托；存档管理（游戏/存档位 ID 化标签、备份 CRUD、哈希去重、置顶）；设置弹窗（备份根目录 + 主题切换）；按钮防重复（`setButtonLoading`/`resetButton`）
+- **styles.css** — CSS 变量主题系统（`:root` 暗色 + `body.light` 亮色），包含颜色、排版、圆角、间距四组令牌
 
 ### 备份目录结构
 
 ```
 备份根目录/
-  └── 游戏名/
-      └── 2026-05-06 15-30-22/
-          ├── meta.json    ← {"original_file_path": "...", "display_name": "..."}
-          └── save.dat     ← 原文件保持原名
+  └── {game_id}/              ← 游戏 UUID（非名称）
+      └── {slot_id}/          ← 存档位 UUID（非名称）
+          └── YYYY-MM-DD HH-MM-SS 描述/   ← 时间戳 + 空格 + 序号
+              ├── meta.json   ← { original_file_path, display_name, description, content_hash }
+              └── save.dat
 ```
 
-文件夹名用 `YYYY-MM-DD HH-MM-SS` 格式（冒号替换为横线避免 Windows 路径问题）。
+ID 化意味着改游戏/存档位名不会导致备份路径断裂。详见 [LESSONS.md](./LESSONS.md) 第 7 条。
 
-### 配置持久化
-
-配置保存为 `config.json` 于 Tauri app data 目录（Windows: `%APPDATA%/com.hrbTools.app/`），结构：
+### 配置结构（config.json）
 
 ```json
 {
   "backup_root": "D:/backups",
-  "game_names": ["游戏A", "游戏B"]
+  "theme": "system",
+  "games": [
+    {
+      "id": "uuid",
+      "name": "游戏1",
+      "pinned": false,
+      "slots": [
+        { "id": "uuid", "name": "存档1", "file_path": "D:/saves/file.dat",
+          "next_backup_number": 3, "key_file_patterns": [] }
+      ]
+    }
+  ],
+  "timezone_sets": [
+    { "id": "beijing", "timezone": "Asia/Shanghai", "datetime_format": "", "pinned": false, "sort_order": 0 },
+    { "id": "india", "timezone": "Asia/Kolkata", "datetime_format": "", "pinned": false, "sort_order": 1 }
+  ]
 }
 ```
 
-启动时 `loadConfig()` 自动加载，失败时使用空默认值。
+- 北京套件 `id: "beijing"` — 时区锁定不可改不可删
+- 主题 `"system"` / `"dark"` / `"light"` — 默认跟随系统
+
+### 主题系统
+
+CSS 变量定义在 `:root`（暗色默认），亮色覆盖在 `body.light`。三态切换通过 JS `applyTheme()` 实现，`"system"` 模式监听 `prefers-color-scheme: dark`。禁止硬编码色值——所有颜色必须通过 CSS 变量引用。
 
 ### 依赖
 
-- `tauri = "2.0"` — 桌面框架
-- `tauri-build = "2"` — 构建时依赖
-- `serde` / `serde_json` — JSON 序列化
-- `chrono`（开启 `serde` feature）/ `chrono-tz` — 时间解析与时区
-- `rfd = "0.17"` — 系统原生文件对话框
+- `tauri = "2"` / `tauri-build = "2"` — 桌面框架
+- `serde` / `serde_json` — JSON
+- `chrono`（`serde` feature）/ `chrono-tz` — 时间解析
+- `rfd = "0.17"` — 系统对话框
+- `md-5 = "0.10"` — 内容哈希去重
 
-### 命名约定
+### 窗口配置（tauri.conf.json）
 
-见 [LESSONS.md](./LESSONS.md) 第 1 条。核心：命令参数用 camelCase，结构体字段用 snake_case。
-
-### 无构建步骤
-
-见 [LESSONS.md](./LESSONS.md) 第 2-4 条。无 npm/打包器，禁止 ES module import，用 `window.__TAURI_INTERNALS__`。
-
-### 平台特定
-
-- `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` 在 Windows release 构建中隐藏控制台窗口
-- `tauri.conf.json` 中 `build.frontendDist` 指向 `./src`（前端文件无构建步骤）
-- 图标文件位于 `icons/`（32x32.png, 128x128.png, icon.ico）
+- 700×580 固定大小，不可缩放
+- 无边框（`decorations: false`），自定义标题栏
+- 前端文件指向 `./src`（无 `devUrl`）
