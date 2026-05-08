@@ -74,12 +74,6 @@ const DATETIME_FORMATS = [
     { value: '%m-%d %H:%M', label: 'MM-DD HH:mm' },
 ];
 
-function getCurrentDatetimeStr() {
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-}
-
 function getCurrentTimestampMs() { return Date.now().toString(); }
 
 function formatDatetimeStr(rustStr, format) {
@@ -132,17 +126,64 @@ function renderTimezoneSets() {
                 </div>
             </div>
             <div class="tz-row">
-                <input class="tz-datetime-input" placeholder="时间字符串..." data-set-id="${escapeHtml(set.id)}">
+                <span class="tz-input-wrap">
+                    <input class="tz-datetime-input" placeholder="时间字符串..." data-set-id="${escapeHtml(set.id)}">
+                    <button class="tz-clear" data-action="clear-dt" title="清空">&times;</button>
+                </span>
                 <button class="tz-copy" data-action="copy-dt" title="复制">📋</button>
                 <div class="tz-arrows">
                     <button class="tz-arrow" data-action="to-ts">&rarr;</button>
                     <button class="tz-arrow" data-action="to-dt">&larr;</button>
                 </div>
-                <input class="tz-timestamp-input" placeholder="时间戳..." data-set-id="${escapeHtml(set.id)}">
+                <span class="tz-input-wrap">
+                    <input class="tz-timestamp-input" placeholder="时间戳..." data-set-id="${escapeHtml(set.id)}">
+                    <button class="tz-clear" data-action="clear-ts" title="清空">&times;</button>
+                </span>
                 <button class="tz-copy" data-action="copy-ts" title="复制">📋</button>
             </div>
         </div>`;
     }).join('');
+}
+
+function saveTimezoneValues() {
+    const state = {};
+    timezoneSets.querySelectorAll('.tz-set').forEach(el => {
+        const dt = el.querySelector('.tz-datetime-input');
+        const ts = el.querySelector('.tz-timestamp-input');
+        state[el.dataset.setId] = { dt: dt?.value || '', ts: ts?.value || '' };
+    });
+    return state;
+}
+
+function restoreTimezoneValues(saved) {
+    timezoneSets.querySelectorAll('.tz-set').forEach(el => {
+        const s = saved[el.dataset.setId];
+        if (!s) return;
+        const dt = el.querySelector('.tz-datetime-input');
+        const ts = el.querySelector('.tz-timestamp-input');
+        if (dt) dt.value = s.dt;
+        if (ts) ts.value = s.ts;
+    });
+}
+
+async function initTimezoneDefaults() {
+    const setEls = timezoneSets.querySelectorAll('.tz-set');
+    for (const setEl of setEls) {
+        const setId = setEl.dataset.setId;
+        const set = currentConfig.timezone_sets.find(s => s.id === setId);
+        if (!set) continue;
+        const tsInput = setEl.querySelector('.tz-timestamp-input');
+        const dtInput = setEl.querySelector('.tz-datetime-input');
+        if (!tsInput || tsInput.value) continue;
+        tsInput.value = getCurrentTimestampMs();
+        try {
+            const ts = parseInt(tsInput.value, 10);
+            const response = await invoke('convert_to_datetime', { request: { timestamp_ms: ts, timezone: set.timezone } });
+            if (response.success && dtInput) {
+                dtInput.value = formatDatetimeStr(response.datetime_str, set.datetime_format);
+            }
+        } catch (err) { /* ignore */ }
+    }
 }
 
 // 事件委托：点击事件
@@ -160,14 +201,21 @@ timezoneSets.addEventListener('click', async (e) => {
     if (action === 'pin-tz') {
         await invoke('toggle_timezone_pin', { setId });
         set.pinned = !set.pinned;
+        const saved = saveTimezoneValues();
         renderTimezoneSets();
+        restoreTimezoneValues(saved);
     } else if (action === 'reset-tz') {
-        dtInput.value = getCurrentDatetimeStr();
         tsInput.value = getCurrentTimestampMs();
+        try {
+            const response = await invoke('convert_to_datetime', { request: { timestamp_ms: parseInt(tsInput.value, 10), timezone: set.timezone } });
+            if (response.success) dtInput.value = formatDatetimeStr(response.datetime_str, set.datetime_format);
+        } catch (err) { /* ignore */ }
     } else if (action === 'delete-tz') {
+        const saved = saveTimezoneValues();
         await invoke('remove_timezone_set', { setId });
         currentConfig = await invoke('get_config');
         renderTimezoneSets();
+        restoreTimezoneValues(saved);
     } else if (action === 'to-ts') {
         const dtStr = dtInput.value.trim();
         if (!dtStr) return;
@@ -206,6 +254,10 @@ timezoneSets.addEventListener('click', async (e) => {
         const orig = btn.textContent;
         btn.textContent = '✓';
         setTimeout(() => { btn.textContent = orig; }, 1000);
+    } else if (action === 'clear-dt') {
+        dtInput.value = '';
+    } else if (action === 'clear-ts') {
+        tsInput.value = '';
     }
 });
 
@@ -230,9 +282,12 @@ timezoneSets.addEventListener('change', async (e) => {
 
 // 新增时区
 addTimezoneBtn.addEventListener('click', async () => {
+    const saved = saveTimezoneValues();
     await invoke('add_timezone_set');
     currentConfig = await invoke('get_config');
     renderTimezoneSets();
+    restoreTimezoneValues(saved);
+    await initTimezoneDefaults();
 });
 
 // 标题栏窗口控制
@@ -247,6 +302,7 @@ async function loadConfig() {
     applyTheme(currentConfig.theme || 'system');
     updateSettingsDisplay();
     renderTimezoneSets();
+    await initTimezoneDefaults();
     if (currentConfig.games.length > 0) {
         selectedGameId = currentConfig.games[0].id;
         if (currentConfig.games[0].slots.length > 0) {
