@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **代码开发前必须阅读 [LESSONS.md](./LESSONS.md)** — 本项目反复踩过的坑和硬性约束。
+> **代码开发前必须阅读 [LESSONS.md](./docs/LESSONS.md)** — 本项目反复踩过的坑和硬性约束。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
 
 ## 常用命令
@@ -36,7 +36,7 @@ Tauri 2.0 桌面应用，**无边框窗口**（自定义标题栏），左侧 Ta
 
 - `AppConfig` — `backup_root`、`games: Vec<GameConfig>`、`timezone_sets: Vec<TimezoneSet>`、`theme: String`
 - `GameConfig` — `id`（UUID）、`name`、`slots: Vec<SlotConfig>`、`pinned`
-- `SlotConfig` — `id`（UUID）、`name`、`file_path`、`next_backup_number`、`key_file_patterns`
+- `SlotConfig` — `id`（UUID）、`name`、`file_paths: Vec<String>`（多文件路径）、`next_backup_number`、`key_file_patterns`
 - `TimezoneSet` — `id`（"beijing" 或 UUID）、`timezone`、`datetime_format`、`pinned`、`sort_order`
 - `BackupInfo` — `folder_name`、`display_name`、`description`、`original_file_path`、`content_hash`、`pinned`
 - `OpResult` — `success`、`message`
@@ -44,8 +44,8 @@ Tauri 2.0 桌面应用，**无边框窗口**（自定义标题栏），左侧 Ta
 ### 前端
 
 - **index.html** — 自定义标题栏（`#title-bar`）+ 设置弹窗（`#settingsOverlay`）+ 左侧 Tab 栏 + 时间转换面板（`#timezoneSets`）+ 存档管理面板（双层游戏/存档位标签 + 备份列表）
-- **main.js** — IPC 封装 (`window.__TAURI_INTERNALS__.invoke`)；时区套件渲染/事件委托；存档管理（游戏/存档位 ID 化标签、备份 CRUD、哈希去重、置顶）；设置弹窗（备份根目录 + 主题切换）；按钮防重复（`setButtonLoading`/`resetButton`）
-- **styles.css** — CSS 变量主题系统（`:root` 暗色 + `body.light` 亮色），包含颜色、排版、圆角、间距四组令牌
+- **main.js** — IPC 封装 (`window.__TAURI_INTERNALS__.invoke`)；**两个独立面板**：时区转换（`renderTimezoneSets`/事件委托）+ 存档管理（游戏/存档位 ID 化标签、文件标签、备份 CRUD、哈希去重、置顶、恢复选择弹窗）；设置弹窗；按钮防重复。**⚠️ 两个面板互不相关，修改一个绝对不能动另一个的代码（详见 [LESSONS.md](./docs/LESSONS.md) 第 8 条）**
+- **styles.css** — CSS 变量主题系统（`:root` 暗色 + `body.light` 亮色），包含颜色、排版、圆角、间距四组令牌。**根字号 `html { font-size: 18px }`**（默认 16px），所有 `rem` 值以此基准缩放
 
 ### 备份目录结构
 
@@ -54,11 +54,13 @@ Tauri 2.0 桌面应用，**无边框窗口**（自定义标题栏），左侧 Ta
   └── {game_id}/              ← 游戏 UUID（非名称）
       └── {slot_id}/          ← 存档位 UUID（非名称）
           └── YYYY-MM-DD HH-MM-SS 描述/   ← 时间戳 + 空格 + 序号
-              ├── meta.json   ← { original_file_path, display_name, description, content_hash }
-              └── save.dat
+              ├── meta.json   ← { display_name, description, files: { "文件名": { original_path, content_hash } } }
+              ├── save.dat
+              └── config.ini  ← 多个源文件同时备份
 ```
 
-ID 化意味着改游戏/存档位名不会导致备份路径断裂。详见 [LESSONS.md](./LESSONS.md) 第 7 条。
+meta.json 使用新 `files` 映射格式；旧格式（`original_file_path`/`content_hash`）自动兼容读取。
+ID 化意味着改游戏/存档位名不会导致备份路径断裂。详见 [LESSONS.md](./docs/LESSONS.md) 第 7 条。
 
 ### 配置结构（config.json）
 
@@ -72,7 +74,7 @@ ID 化意味着改游戏/存档位名不会导致备份路径断裂。详见 [LE
       "name": "游戏1",
       "pinned": false,
       "slots": [
-        { "id": "uuid", "name": "存档1", "file_path": "D:/saves/file.dat",
+        { "id": "uuid", "name": "存档1", "file_paths": ["D:/saves/file.dat"],
           "next_backup_number": 3, "key_file_patterns": [] }
       ]
     }
@@ -89,7 +91,7 @@ ID 化意味着改游戏/存档位名不会导致备份路径断裂。详见 [LE
 
 ### 主题系统
 
-CSS 变量定义在 `:root`（暗色默认），亮色覆盖在 `body.light`。三态切换通过 JS `applyTheme()` 实现，`"system"` 模式监听 `prefers-color-scheme: dark`。禁止硬编码色值——所有颜色必须通过 CSS 变量引用。
+CSS 变量定义在 `:root`（暗色，蓝色 `#4b8bf4`），亮色覆盖在 `body.light`（白色底 + 青绿 `#0d9488`）。三态切换通过 JS `applyTheme()` 实现，`"system"` 模式监听 `prefers-color-scheme: dark`。禁止硬编码色值——所有颜色必须通过 CSS 变量引用。需要 `rgba()` 透明度时用 `rgba(var(--accent-rgb), 透明度)`，已提供 `--accent-rgb` 令牌。
 
 ### 依赖
 
@@ -101,6 +103,7 @@ CSS 变量定义在 `:root`（暗色默认），亮色覆盖在 `body.light`。�
 
 ### 窗口配置（tauri.conf.json）
 
-- 700×580 固定大小，不可缩放
+- 780×640 固定大小，不可缩放，启动位置由 `.setup()` 自动计算（屏幕居中偏上）
 - 无边框（`decorations: false`），自定义标题栏
 - 前端文件指向 `./src`（无 `devUrl`）
+- 位置计算用 `window.outer_size()` 取实际尺寸，改配置无需同步改定位代码

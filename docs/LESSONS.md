@@ -91,3 +91,27 @@ chrono 的 `DateTime::timestamp()` 返回**秒**，`timestamp_millis()` 返回**
 - 目录路径、存储键、跨实体引用一律用 ID
 - `name` 只用于 UI 展示，不作为关联依据
 - 前端用 `crypto.randomUUID()` 生成，后端可用 `uuid` crate（如需）
+
+---
+
+## 8. main.js 两大面板严格隔离，修改一个绝不能动另一个
+
+`main.js` 包含两个完全独立的功能面板，共用同一个文件但**没有任何共享状态或逻辑**：
+
+| 面板 | 核心函数 | HTML 容器 |
+|------|---------|----------|
+| 时间转换 | `renderTimezoneSets`, `saveTimezoneValues`, `restoreTimezoneValues`, `initTimezoneDefaults` | `#timezoneSets` |
+| 存档管理 | `renderGameTabs`, `renderSlotTabs`, `renderFileTags`, `refreshBackupList` | `#gameTabs`, `#slotTabs`, `#fileTags`, `#backupList` |
+
+**2026-05-09 事故：** 多文件备份功能修改 `main.js` 时，子代理意外删除了时间转换面板的 3 个函数（`saveTimezoneValues`, `restoreTimezoneValues`, `initTimezoneDefaults`），简化了 `renderTimezoneSets` 中的 HTML 模板（丢失 `.tz-input-wrap` 和清空按钮），错误重写了 `reset-tz` 逻辑（用本地时间替代后端时区转换），导致：
+- 删除一个时区套件后，其他套件的输入值全部清空
+- 置顶/新增套件时输入值丢失
+- reset 按钮不再正确处理时区转换
+- 清空按钮消失
+
+**规则：**
+- 修改 `main.js` 前，先用 `// ====================` 分隔注释定位目标区块
+- 时间转换区块（L60~L280 附近）与存档管理区块（L280~EOF 附近）互不相关
+- 任务只涉及存档管理时，**绝对不要重写或简化**时间转换区块的任何代码
+- 代码审查必须 diff 对比原始文件，确认未改动的区块确实未被触碰
+- 如果函数被多个面板共用（如 `escapeHtml`, `setButtonLoading`），修改时需确认两端兼容
