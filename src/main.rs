@@ -643,6 +643,7 @@ fn restore_backup(
     slot_id: String,
     folder_name: String,
     skip_backup: bool,
+    selected_files: Option<Vec<String>>,
 ) -> OpResult {
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
@@ -654,77 +655,124 @@ fn restore_backup(
         return OpResult { success: false, message: "备份不存在".to_string() };
     }
 
-    // 读取 meta.json
+    // 读取 meta.json，收集文件信息
     let meta_path = backup_dir.join("meta.json");
-    let (original_path, _backup_hash) = if meta_path.exists() {
-        std::fs::read_to_string(&meta_path)
-            .ok()
-            .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
-            .map(|meta| {
-                (
-                    meta["original_file_path"].as_str().unwrap_or("").to_string(),
-                    meta["content_hash"].as_str().unwrap_or("").to_string(),
-                )
-            })
-            .unwrap_or_default()
+    let files_info: Vec<(String, String)> = if meta_path.exists() {
+        let meta_str = std::fs::read_to_string(&meta_path).unwrap_or_default();
+        if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&meta_str) {
+            if let Some(files) = meta["files"].as_object() {
+                files.iter().map(|(name, info)| {
+                    let original_path = info["original_path"].as_str().unwrap_or("").to_string();
+                    (name.clone(), original_path)
+                }).collect()
+            } else if let Some(original_path) = meta["original_file_path"].as_str() {
+                // 旧格式向后兼容
+                let backup_file = find_backup_file(&backup_dir);
+                let name = backup_file
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "save.dat".to_string());
+                vec![(name, original_path.to_string())]
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        }
     } else {
-        (String::new(), String::new())
+        vec![]
     };
 
-    if original_path.is_empty() {
-        return OpResult { success: false, message: "无法获取原始文件路径".to_string() };
+    if files_info.is_empty() {
+        return OpResult { success: false, message: "备份中没有文件信息".to_string() };
     }
 
-    // 找到备份文件
-    let backup_file = match std::fs::read_dir(&backup_dir) {
-        Ok(entries) => entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
-            .filter(|e| e.file_name() != "meta.json")
-            .map(|e| e.path())
-            .next(),
-        Err(_) => None,
+    // 多文件且未指定 selected_files 时返回文件列表
+    if files_info.len() > 1 && selected_files.is_none() {
+        let file_list: Vec<String> = files_info.iter().map(|(name, path)| {
+            format!("{}|{}", name, path)
+        }).collect();
+        return OpResult {
+            success: false,
+            message: format!("SELECT_FILES:{}", file_list.join(";;")),
+        };
+    }
+
+    // 筛选要恢复的文件
+    let to_restore: Vec<&(String, String)> = if let Some(ref selected) = selected_files {
+        files_info.iter().filter(|(name, _)| selected.contains(name)).collect()
+    } else {
+        files_info.iter().collect()
     };
 
-    let backup_file = match backup_file {
-        Some(f) => f,
-        None => return OpResult { success: false, message: "备份文件夹中无文件".to_string() },
-    };
+    if to_restore.is_empty() {
+        return OpResult { success: false, message: "未选择要恢复的文件".to_string() };
+    }
 
-    // 检查当前文件是否已有备份
-    let original = std::path::Path::new(&original_path);
-    if !skip_backup && original.exists() {
-        // 获取当前 slot 的 patterns
-        let patterns: Vec<String> = config.games.iter()
-            .find(|g| g.id == game_id)
-            .and_then(|g| g.slots.iter().find(|s| s.id == slot_id))
-            .map(|s| s.key_file_patterns.clone())
-            .unwrap_or_default();
+    // 检查原始文件是否需要先备份
+    if !skip_backup {
+        let needs_backup = to_restore.iter().any(|(_, orig)| {
+            std::path::Path::new(orig).exists()
+        });
+        if needs_backup {
+            let patterns: Vec<String> = config.games.iter()
+                .find(|g| g.id == game_id)
+                .and_then(|g| g.slots.iter().find(|s| s.id == slot_id))
+                .map(|s| s.key_file_patterns.clone())
+                .unwrap_or_default();
 
-        let current_hash = compute_hash(original_path.clone(), patterns).unwrap_or_default();
-        let hash_match = list_backups_internal(&config, &game_id, &slot_id)
-            .iter()
-            .any(|b| b.content_hash == current_hash);
+            let first_original = &to_restore[0].1;
+            let current_hash = compute_single_hash(first_original.clone(), patterns).unwrap_or_default();
+            let hash_match = list_backups_internal(&config, &game_id, &slot_id)
+                .iter()
+                .any(|b| b.content_hash == current_hash);
 
-        if !hash_match {
-            return OpResult {
-                success: false,
-                message: format!("NEED_BACKUP_CONFIRM:{}", original_path),
-            };
+            if !hash_match {
+                return OpResult {
+                    success: false,
+                    message: format!("NEED_BACKUP_CONFIRM:{}", first_original),
+                };
+            }
         }
     }
 
-    // 复制恢复
-    match std::fs::copy(&backup_file, &original_path) {
-        Ok(_) => OpResult {
-            success: true,
-            message: format!("已恢复到: {}", original_path),
-        },
-        Err(e) => OpResult {
-            success: false,
-            message: format!("恢复失败: {}", e),
-        },
+    // 逐个恢复选中文件
+    let mut restored = 0;
+    for (name, original_path) in &to_restore {
+        let backup_file = backup_dir.join(name);
+        if !backup_file.exists() {
+            continue;
+        }
+        // 确保目标目录存在
+        if let Some(parent) = std::path::Path::new(original_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::copy(&backup_file, original_path) {
+            Ok(_) => restored += 1,
+            Err(e) => {
+                return OpResult {
+                    success: false,
+                    message: format!("恢复 {} 失败: {}", name, e),
+                };
+            }
+        }
     }
+
+    OpResult {
+        success: true,
+        message: format!("已恢复 {}/{} 个文件", restored, to_restore.len()),
+    }
+}
+
+/// 在备份目录中找第一个非 meta.json 的文件
+fn find_backup_file(backup_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(backup_dir).ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter(|e| e.file_name() != "meta.json")
+        .map(|e| e.path())
+        .next()
 }
 
 // ==================== 哈希计算 ====================
