@@ -311,7 +311,6 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .game-tab:hover { color: rgba(255,255,255,0.7); }
-.game-tab.dragging { opacity: 0.5; }
 
 .game-tab.active {
     color: #fff;
@@ -346,10 +345,6 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .game-tab-add:hover { color: rgba(255,255,255,0.5); }
-
-/* 游戏标签拖拽排序 */
-.game-tab[draggable="true"] { cursor: grab; }
-.game-tab[draggable="true"]:active { cursor: grabbing; }
 
 /* 游戏标签内联编辑 input */
 .game-tab input {

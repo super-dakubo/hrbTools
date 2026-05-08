@@ -60,8 +60,6 @@ struct GameConfig {
     slots: Vec<SlotConfig>,
     #[serde(default)]
     pinned: bool,
-    #[serde(default)]
-    sort_order: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -727,18 +725,6 @@ fn toggle_game_pin(app: tauri::AppHandle, game_id: String) -> OpResult {
 }
 
 #[tauri::command]
-fn reorder_games(app: tauri::AppHandle, game_ids: Vec<String>) -> OpResult {
-    let mut config = load_config(&app);
-    for (i, id) in game_ids.iter().enumerate() {
-        if let Some(game) = config.games.iter_mut().find(|g| &g.id == id) {
-            game.sort_order = i as u32;
-        }
-    }
-    save_config(&app, &config);
-    OpResult { success: true, message: "排序已保存".to_string() }
-}
-
-#[tauri::command]
 fn open_folder(path: String) -> OpResult {
     let path = std::path::Path::new(&path);
     let target = if path.is_dir() {
@@ -852,7 +838,6 @@ fn main() {
             recompute_backup_hash,
             toggle_backup_pin,
             toggle_game_pin,
-            reorder_games,
             open_folder,
         ])
         .run(tauri::generate_context!())

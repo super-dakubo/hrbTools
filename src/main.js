@@ -150,8 +150,8 @@ function renderGameTabs() {
     const games = getSortedGames();
     gameTabs.innerHTML = games.map(g => {
         const activeClass = g.id === selectedGameId ? ' active' : '';
-        return `<button class="game-tab${activeClass}" data-game-id="${escapeHtml(g.id)}" draggable="true"
-                  title="拖拽排序 | 双击改名">
+        return `<button class="game-tab${activeClass}" data-game-id="${escapeHtml(g.id)}"
+                  title="双击改名">
                   <span class="tab-pin" data-action="pin-game" data-game-id="${escapeHtml(g.id)}"
                     style="font-size:0.75rem;color:${g.pinned ? '#fbbf24' : 'rgba(255,255,255,0.2)'}">&#128204;</span>
                   ${escapeHtml(g.name)}
@@ -165,7 +165,6 @@ function renderGameTabs() {
 function getSortedGames() {
     return [...currentConfig.games].sort((a, b) => {
         if (a.pinned !== b.pinned) return b.pinned - a.pinned;
-        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
         return a.name.localeCompare(b.name);
     });
 }
@@ -199,22 +198,6 @@ function bindGameTabEvents() {
             startInlineEditGame(tab);
         });
 
-        tab.addEventListener('dragstart', (e) => {
-            e.dataTransfer.setData('text/plain', tab.dataset.gameId);
-            tab.classList.add('dragging');
-        });
-        tab.addEventListener('dragend', () => tab.classList.remove('dragging'));
-    });
-
-    document.querySelectorAll('.game-tab').forEach(tab => {
-        tab.addEventListener('dragover', (e) => { e.preventDefault(); });
-        tab.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            const fromId = e.dataTransfer.getData('text/plain');
-            const toId = tab.dataset.gameId;
-            if (fromId === toId) return;
-            await handleGameReorder(fromId, toId);
-        });
     });
 
     document.querySelectorAll('.tab-close[data-action="delete-game"]').forEach(btn => {
@@ -244,8 +227,7 @@ function bindGameTabEvents() {
                 id: gameId,
                 name,
                 slots: [{ id: slotId, name: '存档1', file_path: '', next_backup_number: 1, key_file_patterns: [] }],
-                pinned: false,
-                sort_order: currentConfig.games.length
+                pinned: false
             });
             await saveConfigToBackend();
             selectedGameId = gameId;
@@ -309,20 +291,6 @@ async function renameGame(gameId, newName) {
     renderGameTabs();
     renderSlotTabs();
     refreshBackupList();
-}
-
-async function handleGameReorder(fromId, toId) {
-    const sorted = getSortedGames();
-    const fromIdx = sorted.findIndex(g => g.id === fromId);
-    const toIdx = sorted.findIndex(g => g.id === toId);
-    sorted.splice(toIdx, 0, sorted.splice(fromIdx, 1)[0]);
-    const ids = sorted.map(g => g.id);
-    await invoke('reorder_games', { gameIds: ids });
-    ids.forEach((id, i) => {
-        const g = currentConfig.games.find(g => g.id === id);
-        if (g) g.sort_order = i;
-    });
-    renderGameTabs();
 }
 
 async function toggleGamePin(gameId) {
