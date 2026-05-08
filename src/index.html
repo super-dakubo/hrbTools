@@ -61,12 +61,13 @@
             <!-- 存档文件 -->
             <div class="input-group">
                 <label>存档文件</label>
-                <div class="row">
-                    <input type="text" id="filePath" placeholder="输入路径或点击浏览...">
-                    <button id="browseFileBtn" class="btn-small">浏览</button>
-                    <button id="rehashBtn" class="btn-small" title="重算当前文件哈希">重算</button>
+                <div class="file-tags" id="fileTags">
+                    <!-- 动态生成 .file-tag + .file-tag-add -->
                 </div>
-                <div class="file-tags" id="fileTags"></div>
+                <div class="row" style="margin-top:6px;">
+                    <button id="browseFileBtn" class="btn-small">浏览添加</button>
+                    <button id="rehashBtn" class="btn-small" title="重算所有文件哈希">重算</button>
+                </div>
             </div>
 
             <button id="saveBackupBtn">保存存档</button>
