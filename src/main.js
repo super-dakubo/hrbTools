@@ -42,6 +42,7 @@ const settingsCloseBtn = document.getElementById('settingsCloseBtn');
 const settingsBackupRoot = document.getElementById('settingsBackupRoot');
 const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
 
 // ==================== 全局 Tab 切换 ====================
 tabs.forEach(tab => {
@@ -243,6 +244,7 @@ closeBtn.addEventListener('click', () => invoke('window_close'));
 
 async function loadConfig() {
     currentConfig = await invoke('get_config');
+    applyTheme(currentConfig.theme || 'dark');
     updateSettingsDisplay();
     renderTimezoneSets();
     if (currentConfig.games.length > 0) {
@@ -873,6 +875,23 @@ settingsCloseBtn.addEventListener('click', () => {
 settingsOverlay.addEventListener('click', (e) => {
     if (e.target === settingsOverlay) settingsOverlay.style.display = 'none';
 });
+
+themeToggleBtn.addEventListener('click', () => {
+    const newTheme = currentConfig.theme === 'light' ? 'dark' : 'light';
+    currentConfig.theme = newTheme;
+    applyTheme(newTheme);
+    saveConfigToBackend();
+});
+
+function applyTheme(theme) {
+    if (theme === 'light') {
+        document.body.classList.add('light');
+        themeToggleBtn.textContent = '☀️ 亮色模式';
+    } else {
+        document.body.classList.remove('light');
+        themeToggleBtn.textContent = '🌙 暗色模式';
+    }
+}
 
 settingsSetDirBtn.addEventListener('click', async () => {
     const dir = await invoke('pick_directory');
