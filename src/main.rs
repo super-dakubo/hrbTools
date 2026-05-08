@@ -154,7 +154,37 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
     let path = config_path(app);
     if path.exists() {
         match fs::read_to_string(&path) {
-            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+            Ok(json) => {
+                let raw: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+                let mut config: AppConfig = serde_json::from_value(raw.clone()).unwrap_or_default();
+                // 迁移旧格式: file_path (String) → file_paths (Vec)
+                if let Some(games) = raw["games"].as_array() {
+                    for (i, game) in games.iter().enumerate() {
+                        if let Some(slots) = game["slots"].as_array() {
+                            for (j, slot) in slots.iter().enumerate() {
+                                if config
+                                    .games
+                                    .get(i)
+                                    .and_then(|g| g.slots.get(j))
+                                    .map(|s| s.file_paths.is_empty())
+                                    .unwrap_or(false)
+                                {
+                                    if let Some(old_path) = slot["file_path"].as_str() {
+                                        if !old_path.is_empty() {
+                                            if let Some(g) = config.games.get_mut(i) {
+                                                if let Some(s) = g.slots.get_mut(j) {
+                                                    s.file_paths = vec![old_path.to_string()];
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                config
+            }
             Err(_) => AppConfig::default(),
         }
     } else {
