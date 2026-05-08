@@ -43,7 +43,7 @@ struct SlotConfig {
     id: String,
     name: String,
     #[serde(default)]
-    file_path: String,
+    file_paths: Vec<String>,
     #[serde(default = "default_next_backup_number")]
     next_backup_number: u32,
     #[serde(default)]
@@ -317,12 +317,24 @@ fn read_backup_meta(dir: &std::path::Path, folder_name: &str) -> Option<BackupIn
             .ok()
             .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
             .map(|meta| {
-                (
-                    meta["display_name"].as_str().unwrap_or(folder_name).to_string(),
-                    meta["original_file_path"].as_str().unwrap_or("").to_string(),
-                    meta["content_hash"].as_str().unwrap_or("").to_string(),
-                    meta["pinned"].as_bool().unwrap_or(false),
-                )
+                let display_name = meta["display_name"].as_str().unwrap_or(folder_name).to_string();
+                let pinned = meta["pinned"].as_bool().unwrap_or(false);
+
+                // 新格式: "files" 映射
+                let (original_path, hash) = if let Some(files) = meta["files"].as_object() {
+                    let first = files.values().next().and_then(|v| v.as_object());
+                    (
+                        first.and_then(|f| f["original_path"].as_str()).unwrap_or("").to_string(),
+                        first.and_then(|f| f["content_hash"].as_str()).unwrap_or("").to_string(),
+                    )
+                } else {
+                    // 旧格式向后兼容
+                    (
+                        meta["original_file_path"].as_str().unwrap_or("").to_string(),
+                        meta["content_hash"].as_str().unwrap_or("").to_string(),
+                    )
+                };
+                (display_name, original_path, hash, pinned)
             })
             .unwrap_or_else(|| (folder_name.to_string(), String::new(), String::new(), false))
     } else {

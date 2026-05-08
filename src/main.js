@@ -274,7 +274,7 @@ function saveFilePathToSlot(filePath) {
     if (!game) return;
     const slot = game.slots.find(s => s.id === selectedSlotId);
     if (!slot) return;
-    slot.file_path = filePath;
+    slot.file_paths = [filePath];
     saveConfigToBackend();
 }
 
@@ -360,7 +360,7 @@ function bindGameTabEvents() {
             currentConfig.games.push({
                 id: gameId,
                 name,
-                slots: [{ id: slotId, name: '存档1', file_path: '', next_backup_number: 1, key_file_patterns: [] }],
+                slots: [{ id: slotId, name: '存档1', file_paths: [], next_backup_number: 1, key_file_patterns: [] }],
                 pinned: false
             });
             await saveConfigToBackend();
@@ -500,7 +500,7 @@ function bindSlotTagEvents(game) {
             const slotId = crypto.randomUUID();
             const n = game.slots.length + 1;
             const name = `存档${n}`;
-            game.slots.push({ id: slotId, name, file_path: '', next_backup_number: 1, key_file_patterns: [] });
+            game.slots.push({ id: slotId, name, file_paths: [], next_backup_number: 1, key_file_patterns: [] });
             await saveConfigToBackend();
             selectedSlotId = slotId;
             renderSlotTabs();
@@ -569,9 +569,9 @@ function restoreFilePath() {
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game) return;
     const slot = game.slots.find(s => s.id === selectedSlotId);
-    if (slot && slot.file_path) {
-        filePathBySlot[key] = slot.file_path;
-        filePathInput.value = slot.file_path;
+    if (slot && slot.file_paths && slot.file_paths.length > 0) {
+        filePathBySlot[key] = slot.file_paths[0];
+        filePathInput.value = slot.file_paths[0];
     }
 }
 
