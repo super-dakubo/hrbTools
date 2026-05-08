@@ -244,7 +244,7 @@ closeBtn.addEventListener('click', () => invoke('window_close'));
 
 async function loadConfig() {
     currentConfig = await invoke('get_config');
-    applyTheme(currentConfig.theme || 'dark');
+    applyTheme(currentConfig.theme || 'system');
     updateSettingsDisplay();
     renderTimezoneSets();
     if (currentConfig.games.length > 0) {
@@ -876,21 +876,32 @@ settingsOverlay.addEventListener('click', (e) => {
     if (e.target === settingsOverlay) settingsOverlay.style.display = 'none';
 });
 
+const THEME_LABELS = { system: '🌓 跟随系统', dark: '🌙 暗色模式', light: '☀️ 亮色模式' };
+const THEME_ORDER = ['system', 'dark', 'light'];
+
+let systemIsDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    systemIsDark = e.matches;
+    if (currentConfig.theme === 'system') applyTheme('system');
+});
+
 themeToggleBtn.addEventListener('click', () => {
-    const newTheme = currentConfig.theme === 'light' ? 'dark' : 'light';
+    const idx = THEME_ORDER.indexOf(currentConfig.theme);
+    const newTheme = THEME_ORDER[(idx + 1) % 3];
     currentConfig.theme = newTheme;
     applyTheme(newTheme);
     saveConfigToBackend();
 });
 
 function applyTheme(theme) {
-    if (theme === 'light') {
+    const isLight = theme === 'system' ? !systemIsDark : theme === 'light';
+    if (isLight) {
         document.body.classList.add('light');
-        themeToggleBtn.textContent = '☀️ 亮色模式';
     } else {
         document.body.classList.remove('light');
-        themeToggleBtn.textContent = '🌙 暗色模式';
     }
+    themeToggleBtn.textContent = THEME_LABELS[theme] || THEME_LABELS.dark;
 }
 
 settingsSetDirBtn.addEventListener('click', async () => {

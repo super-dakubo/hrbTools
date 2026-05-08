@@ -1,5 +1,6 @@
 /* ==================== 主题变量 ==================== */
 :root {
+    /* 颜色 — 暗色模式 */
     --bg: #212539;
     --bg-alt: #1a1e2e;
     --surface: rgba(255,255,255,0.04);
@@ -26,9 +27,32 @@
     --scrollbar-thumb: rgba(255,255,255,0.08);
     --scrollbar-thumb-hover: rgba(255,255,255,0.15);
     --shadow: rgba(0,0,0,0.4);
+
+    /* 排版 */
+    --font-xs: 0.6rem;
+    --font-sm: 0.72rem;
+    --font-base: 0.8rem;
+    --font-md: 0.9rem;
+    --font-lg: 1.1rem;
+    --font-xl: 1.3rem;
+
+    /* 圆角 */
+    --radius-sm: 4px;
+    --radius: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-pill: 15px;
+
+    /* 间距 */
+    --space-xs: 4px;
+    --space-sm: 6px;
+    --space-md: 10px;
+    --space-lg: 16px;
+    --space-xl: 24px;
 }
 
 body.light {
+    /* 颜色 — 亮色模式 */
     --bg: #f0f2f5;
     --bg-alt: #e4e6e9;
     --surface: rgba(0,0,0,0.03);

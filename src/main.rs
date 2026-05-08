@@ -107,7 +107,7 @@ struct AppConfig {
     theme: String,
 }
 
-fn default_theme() -> String { "dark".to_string() }
+fn default_theme() -> String { "system".to_string() }
 
 impl Default for AppConfig {
     fn default() -> Self {
