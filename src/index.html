@@ -9,10 +9,14 @@
 <body>
 <div class="container">
 
-    <!-- 顶部栏 -->
-    <div class="top-bar">
-        <span class="top-bar-title">HRB Tools</span>
-        <button class="settings-btn" id="settingsBtn" title="设置">&#9881;</button>
+    <!-- 自定义标题栏 -->
+    <div class="title-bar">
+        <span class="title-bar-text">HRB Tools</span>
+        <span class="title-bar-spacer"></span>
+        <button class="title-bar-btn" id="settingsBtn" title="设置">&#9881;</button>
+        <button class="title-bar-btn" id="minimizeBtn" title="最小化">&#x2014;</button>
+        <button class="title-bar-btn" id="maximizeBtn" title="最大化">&#x25A1;</button>
+        <button class="title-bar-btn title-bar-close" id="closeBtn" title="关闭">&#x2715;</button>
     </div>
 
     <div class="body-area">
@@ -34,35 +38,10 @@
 
         <!-- 时间转换面板 -->
         <div class="panel active" id="panel-convert">
-            <h1>时间转换工具</h1>
-            <div class="input-group">
-                <label>时区</label>
-                <select id="timezoneSelect">
-                    <option value="UTC">UTC</option>
-                    <option value="Asia/Shanghai" selected>Asia/Shanghai</option>
-                    <option value="America/New_York">America/New_York</option>
-                    <option value="Europe/London">Europe/London</option>
-                    <option value="Asia/Tokyo">Asia/Tokyo</option>
-                    <option value="Australia/Sydney">Australia/Sydney</option>
-                </select>
+            <div class="timezone-sets" id="timezoneSets">
+                <!-- 动态生成 .tz-set -->
             </div>
-            <div class="convert-section">
-                <div class="section-row">
-                    <label>时间字符串 &rarr; Unix时间戳（毫秒）</label>
-                    <button id="resetTimeBtn" class="btn-tiny">重置为当前时间</button>
-                </div>
-                <input type="text" id="datetimeInput" placeholder="例如: 2026-05-07 15:30:00">
-                <button id="convertBtn">转换</button>
-                <div class="result" id="timestampResult">&mdash;</div>
-                <div id="errorMsg" class="error"></div>
-            </div>
-            <div class="convert-section">
-                <label>Unix时间戳（毫秒） &rarr; 时间字符串</label>
-                <input type="text" id="timestampInput" placeholder="例如: 1746466200000">
-                <button id="convertBackBtn">转换</button>
-                <div class="result" id="datetimeResult">&mdash;</div>
-                <div id="errorMsg2" class="error"></div>
-            </div>
+            <button class="tz-add-btn" id="addTimezoneBtn">+ 新增时区</button>
         </div>
 
         <!-- 存档管理面板 -->

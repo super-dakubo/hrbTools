@@ -27,40 +27,44 @@ body {
     overflow: hidden;
 }
 
-/* ==================== 顶部栏 ==================== */
-.top-bar {
+/* ==================== 自定义标题栏 ==================== */
+.title-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    background: rgba(0,0,0,0.15);
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.title-bar-text {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.65);
     flex-shrink: 0;
 }
 
-.top-bar-title {
-    font-size: 0.8rem;
-    color: rgba(255,255,255,0.35);
-    font-weight: 500;
-}
+.title-bar-spacer { flex: 1; }
 
-.settings-btn {
+.title-bar-btn {
     width: auto;
     margin: 0;
-    padding: 4px 8px;
-    font-size: 1.2rem;
+    padding: 4px 10px;
+    font-size: 0.85rem;
     background: transparent;
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.35);
     border: none;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: 4px;
     line-height: 1;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
 }
 
-.settings-btn:hover {
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.7);
-}
+.title-bar-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+.title-bar-close:hover { background: #e81123; color: #fff; }
 
 /* ==================== 主体区域 ==================== */
 .body-area {
@@ -577,6 +581,176 @@ button:disabled:hover { background: #4b8bf4; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ==================== 时区转换套件 ==================== */
+.timezone-sets { margin-bottom: 8px; }
+
+.tz-set {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.tz-set-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.tz-set-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tz-set-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tz-label {
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.55);
+    padding: 4px 0;
+    font-weight: 500;
+}
+
+.tz-tz-select {
+    padding: 4px 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 5px;
+    color: #fff;
+    font-size: 0.75rem;
+    width: auto;
+    cursor: pointer;
+}
+
+.tz-tz-select option { background: #212539; color: #fff; }
+
+.tz-format-select {
+    padding: 3px 5px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: rgba(255,255,255,0.45);
+    font-size: 0.6rem;
+    width: auto;
+    cursor: pointer;
+}
+
+.tz-format-select option { background: #212539; color: #fff; }
+
+.tz-pin {
+    font-size: 0.75rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0 2px;
+}
+
+.tz-pin.on { color: #fbbf24; }
+.tz-pin.off { color: rgba(255,255,255,0.12); }
+.tz-pin.off:hover { color: rgba(255,255,255,0.3); }
+
+.tz-reset {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    color: rgba(255,255,255,0.3);
+    cursor: pointer;
+    width: auto;
+    margin: 0;
+}
+
+.tz-reset:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
+
+.tz-delete {
+    font-size: 1rem;
+    color: rgba(255,255,255,0.18);
+    cursor: pointer;
+    width: auto;
+    margin: 0;
+    padding: 0 2px;
+    background: transparent;
+    border: none;
+    line-height: 1;
+}
+
+.tz-delete:hover { color: #f87171; }
+
+.tz-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tz-row input {
+    flex: 1;
+    padding: 5px 7px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 5px;
+    color: #fff;
+    font-size: 0.72rem;
+}
+
+.tz-row input::placeholder { color: rgba(255,255,255,0.25); }
+
+.tz-copy {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.15);
+    cursor: pointer;
+    flex-shrink: 0;
+    width: auto;
+    margin: 0;
+    padding: 2px 4px;
+    background: transparent;
+    border: none;
+}
+
+.tz-copy:hover { color: rgba(255,255,255,0.5); }
+
+.tz-arrows {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.tz-arrow {
+    padding: 2px 7px;
+    background: #4b8bf4;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.65rem;
+    cursor: pointer;
+    text-align: center;
+    width: auto;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.tz-arrow:hover { background: #5c9af7; }
+
+.tz-add-btn {
+    width: 100%;
+    margin: 0;
+    padding: 5px;
+    background: rgba(255,255,255,0.04);
+    border: 1px dashed rgba(255,255,255,0.08);
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.15);
+    cursor: pointer;
+}
+
+.tz-add-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.3); }
 
 /* ==================== 模态弹窗 ==================== */
 .modal-overlay {

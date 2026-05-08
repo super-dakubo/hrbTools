@@ -62,12 +62,47 @@ struct GameConfig {
     pinned: bool,
 }
 
+// ==================== 时区转换套件 ====================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct TimezoneSet {
+    id: String,              // "beijing" or UUID
+    timezone: String,        // "Asia/Shanghai"
+    #[serde(default)]
+    datetime_format: String, // "YYYY-MM-DD HH:mm:ss"
+    #[serde(default)]
+    pinned: bool,
+    #[serde(default)]
+    sort_order: u32,
+}
+
+fn default_timezone_sets() -> Vec<TimezoneSet> {
+    vec![
+        TimezoneSet {
+            id: "beijing".to_string(),
+            timezone: "Asia/Shanghai".to_string(),
+            datetime_format: String::new(),
+            pinned: false,
+            sort_order: 0,
+        },
+        TimezoneSet {
+            id: "india".to_string(),
+            timezone: "Asia/Kolkata".to_string(),
+            datetime_format: String::new(),
+            pinned: false,
+            sort_order: 1,
+        },
+    ]
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AppConfig {
     #[serde(default)]
     backup_root: String,
     #[serde(default)]
     games: Vec<GameConfig>,
+    #[serde(default = "default_timezone_sets")]
+    timezone_sets: Vec<TimezoneSet>,
 }
 
 impl Default for AppConfig {
@@ -75,6 +110,7 @@ impl Default for AppConfig {
         AppConfig {
             backup_root: String::new(),
             games: vec![],
+            timezone_sets: default_timezone_sets(),
         }
     }
 }
@@ -820,6 +856,83 @@ fn recompute_backup_hash(
     OpResult { success: true, message: format!("哈希已重算: {}", &content_hash[..8]) }
 }
 
+// ==================== 时区套件管理 ====================
+
+#[tauri::command]
+fn add_timezone_set(app: tauri::AppHandle) -> OpResult {
+    let mut config = load_config(&app);
+    let id = format!("set-{}", config.timezone_sets.len() + 1);
+    let sort_order = config.timezone_sets.len() as u32;
+    config.timezone_sets.push(TimezoneSet {
+        id,
+        timezone: "Asia/Shanghai".to_string(),
+        datetime_format: String::new(),
+        pinned: false,
+        sort_order,
+    });
+    save_config(&app, &config);
+    OpResult { success: true, message: "已添加".to_string() }
+}
+
+#[tauri::command]
+fn remove_timezone_set(app: tauri::AppHandle, set_id: String) -> OpResult {
+    if set_id == "beijing" {
+        return OpResult { success: false, message: "默认时区不可删除".to_string() };
+    }
+    let mut config = load_config(&app);
+    config.timezone_sets.retain(|s| s.id != set_id);
+    save_config(&app, &config);
+    OpResult { success: true, message: "已删除".to_string() }
+}
+
+#[tauri::command]
+fn update_timezone_set(app: tauri::AppHandle, set_id: String, timezone: String, datetime_format: String) -> OpResult {
+    let mut config = load_config(&app);
+    if let Some(set) = config.timezone_sets.iter_mut().find(|s| s.id == set_id) {
+        if set_id != "beijing" {
+            set.timezone = timezone;
+        }
+        set.datetime_format = datetime_format;
+    }
+    save_config(&app, &config);
+    OpResult { success: true, message: "已更新".to_string() }
+}
+
+#[tauri::command]
+fn toggle_timezone_pin(app: tauri::AppHandle, set_id: String) -> OpResult {
+    let mut config = load_config(&app);
+    if let Some(set) = config.timezone_sets.iter_mut().find(|s| s.id == set_id) {
+        set.pinned = !set.pinned;
+    }
+    save_config(&app, &config);
+    OpResult { success: true, message: "已更新".to_string() }
+}
+
+#[tauri::command]
+fn window_minimize(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.minimize();
+    }
+}
+
+#[tauri::command]
+fn window_toggle_maximize(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_maximized().unwrap_or(false) {
+            let _ = window.unmaximize();
+        } else {
+            let _ = window.maximize();
+        }
+    }
+}
+
+#[tauri::command]
+fn window_close(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -839,6 +952,13 @@ fn main() {
             toggle_backup_pin,
             toggle_game_pin,
             open_folder,
+            add_timezone_set,
+            remove_timezone_set,
+            update_timezone_set,
+            toggle_timezone_pin,
+            window_minimize,
+            window_toggle_maximize,
+            window_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
