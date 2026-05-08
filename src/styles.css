@@ -1,3 +1,59 @@
+/* ==================== 主题变量 ==================== */
+:root {
+    --bg: #212539;
+    --bg-alt: #1a1e2e;
+    --surface: rgba(255,255,255,0.04);
+    --surface-hover: rgba(255,255,255,0.07);
+    --border: rgba(255,255,255,0.06);
+    --border-strong: rgba(255,255,255,0.1);
+    --text: rgba(255,255,255,0.85);
+    --text-secondary: rgba(255,255,255,0.55);
+    --text-muted: rgba(255,255,255,0.3);
+    --text-dim: rgba(255,255,255,0.15);
+    --input-bg: rgba(255,255,255,0.05);
+    --titlebar-bg: rgba(0,0,0,0.3);
+    --tab-bar-bg: rgba(0,0,0,0.25);
+    --accent: #4b8bf4;
+    --accent-hover: #5c9af7;
+    --danger-bg: rgba(239,68,68,0.15);
+    --danger-text: #f87171;
+    --danger-border: rgba(239,68,68,0.2);
+    --success-bg: rgba(22,163,74,0.12);
+    --success-text: #86efac;
+    --error-bg: rgba(220,38,38,0.12);
+    --error-text: #fca5a5;
+    --pin-color: #fbbf24;
+    --scrollbar-thumb: rgba(255,255,255,0.08);
+    --scrollbar-thumb-hover: rgba(255,255,255,0.15);
+    --shadow: rgba(0,0,0,0.4);
+}
+
+body.light {
+    --bg: #f0f2f5;
+    --bg-alt: #e4e6e9;
+    --surface: rgba(0,0,0,0.03);
+    --surface-hover: rgba(0,0,0,0.06);
+    --border: rgba(0,0,0,0.06);
+    --border-strong: rgba(0,0,0,0.12);
+    --text: rgba(0,0,0,0.82);
+    --text-secondary: rgba(0,0,0,0.5);
+    --text-muted: rgba(0,0,0,0.3);
+    --text-dim: rgba(0,0,0,0.15);
+    --input-bg: rgba(0,0,0,0.04);
+    --titlebar-bg: rgba(0,0,0,0.08);
+    --tab-bar-bg: rgba(0,0,0,0.04);
+    --danger-bg: rgba(220,38,38,0.08);
+    --danger-text: #dc2626;
+    --danger-border: rgba(220,38,38,0.2);
+    --success-bg: rgba(22,163,74,0.08);
+    --success-text: #16a34a;
+    --error-bg: rgba(220,38,38,0.08);
+    --error-text: #dc2626;
+    --scrollbar-thumb: rgba(0,0,0,0.12);
+    --scrollbar-thumb-hover: rgba(0,0,0,0.2);
+    --shadow: rgba(0,0,0,0.1);
+}
+
 /* ==================== 基础重置 ==================== */
 * {
     box-sizing: border-box;
@@ -6,13 +62,13 @@
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
-body { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+body { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
 
 body {
-    background: #212539;
+    background: var(--bg);
     display: flex;
     margin: 0;
     height: 100vh;
@@ -32,8 +88,8 @@ body {
     display: flex;
     align-items: center;
     padding: 6px 10px;
-    background: rgba(0,0,0,0.3);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    background: var(--titlebar-bg);
+    border-bottom: 1px solid var(--border);
     -webkit-app-region: drag;
     flex-shrink: 0;
     user-select: none;
@@ -42,7 +98,7 @@ body {
 .title-bar-text {
     font-size: 0.8rem;
     font-weight: 600;
-    color: rgba(255,255,255,0.65);
+    color: var(--text-secondary);
     flex-shrink: 0;
 }
 
@@ -54,7 +110,7 @@ body {
     padding: 4px 10px;
     font-size: 0.85rem;
     background: transparent;
-    color: rgba(255,255,255,0.35);
+    color: var(--text-muted);
     border: none;
     cursor: pointer;
     border-radius: 4px;
@@ -63,7 +119,7 @@ body {
     flex-shrink: 0;
 }
 
-.title-bar-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }
+.title-bar-btn:hover { background: var(--surface-hover); color: var(--text); }
 .title-bar-close:hover { background: #e81123; color: #fff; }
 
 /* ==================== 主体区域 ==================== */
@@ -79,8 +135,8 @@ body {
     flex-direction: column;
     gap: 6px;
     padding: 16px 10px;
-    background: rgba(0,0,0,0.25);
-    border-right: 1px solid rgba(255,255,255,0.05);
+    background: var(--tab-bar-bg);
+    border-right: 1px solid var(--input-bg);
     width: 72px;
     flex-shrink: 0;
 }
@@ -96,19 +152,19 @@ body {
     border: none;
     border-radius: 10px;
     cursor: pointer;
-    color: rgba(255,255,255,0.45);
+    color: var(--text-secondary);
     transition: background 0.2s, color 0.2s;
     width: 100%;
 }
 
 .tab:hover {
-    background: rgba(255,255,255,0.05);
-    color: rgba(255,255,255,0.7);
+    background: var(--input-bg);
+    color: var(--text-secondary);
 }
 
 .tab.active {
-    background: rgba(255,255,255,0.08);
-    color: #fff;
+    background: var(--surface-hover);
+    color: var(--text);
 }
 
 .tab-icon { font-size: 1.3rem; line-height: 1; }
@@ -131,13 +187,13 @@ h1 {
     font-size: 1.15rem;
     margin-top: 0;
     margin-bottom: 1rem;
-    color: rgba(255,255,255,0.9);
+    color: var(--text);
     font-weight: 600;
 }
 
 h3 {
     font-size: 0.9rem;
-    color: rgba(255,255,255,0.7);
+    color: var(--text-secondary);
     margin-bottom: 0.5rem;
 }
 
@@ -147,18 +203,18 @@ label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.35rem;
-    color: rgba(255,255,255,0.6);
+    color: var(--text-secondary);
     font-size: 0.85rem;
 }
 
 input, select {
     width: 100%;
     padding: 0.55rem 0.7rem;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     font-size: 0.9rem;
-    background: rgba(255,255,255,0.05);
-    color: rgba(255,255,255,0.85);
+    background: var(--input-bg);
+    color: var(--text);
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -169,11 +225,11 @@ input:focus, select:focus {
 }
 
 select { cursor: pointer; }
-select option { background: #212539; color: #fff; }
+select option { background: var(--bg); color: var(--text); }
 
 button {
-    background: #4b8bf4;
-    color: white;
+    background: var(--accent);
+    color: var(--text);
     border: none;
     width: 100%;
     padding: 0.6rem;
@@ -185,7 +241,7 @@ button {
     margin-top: 0.3rem;
 }
 
-button:hover { background: #5c9af7; }
+button:hover { background: var(--accent-hover); }
 button:active { transform: scale(0.98); }
 
 button:disabled {
@@ -194,7 +250,7 @@ button:disabled {
     transform: none;
 }
 
-button:disabled:hover { background: #4b8bf4; }
+button:disabled:hover { background: var(--accent); }
 
 .row {
     display: flex;
@@ -214,9 +270,9 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .btn-danger {
-    background: rgba(239,68,68,0.15);
-    color: #f87171;
-    border: 1px solid rgba(239,68,68,0.2);
+    background: var(--danger-bg);
+    color: var(--danger-text);
+    border: 1px solid var(--danger-border);
     width: auto;
     padding: 0.25rem 0.6rem;
     font-size: 0.75rem;
@@ -226,8 +282,8 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .btn-danger:hover {
-    background: rgba(239,68,68,0.25);
-    color: #fca5a5;
+    background: var(--danger-bg);
+    color: var(--error-text);
 }
 
 .btn-danger:disabled {
@@ -243,12 +299,12 @@ button:disabled:hover { background: #4b8bf4; }
     margin-left: 2px;
     border-radius: 4px;
     background: transparent;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
     border: 1px solid transparent;
 }
 
-.btn-pin:hover { color: #fbbf24; background: rgba(251,191,36,0.1); }
-.btn-pin.pinned { color: #fbbf24; }
+.btn-pin:hover { color: var(--pin-color); background: rgba(251,191,36,0.1); }
+.btn-pin.pinned { color: var(--pin-color); }
 
 .btn-pin:disabled {
     opacity: 0.35;
@@ -263,7 +319,7 @@ button:disabled:hover { background: #4b8bf4; }
     transition: color 0.15s;
 }
 
-.tab-pin:hover { color: #fbbf24 !important; }
+.tab-pin:hover { color: var(--pin-color) !important; }
 
 .btn-tiny {
     width: auto;
@@ -272,13 +328,13 @@ button:disabled:hover { background: #4b8bf4; }
     font-weight: 500;
     margin-top: 0;
     border-radius: 6px;
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.6);
+    background: var(--surface-hover);
+    color: var(--text-secondary);
 }
 
 .btn-tiny:hover {
-    background: rgba(255,255,255,0.15);
-    color: rgba(255,255,255,0.9);
+    background: var(--text-dim);
+    color: var(--text);
 }
 
 /* ==================== 游戏标签栏 ==================== */
@@ -286,11 +342,11 @@ button:disabled:hover { background: #4b8bf4; }
     display: flex;
     gap: 0;
     overflow-x: auto;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border);
     padding-bottom: 0;
     margin-bottom: 10px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,0.1) transparent;
+    scrollbar-color: var(--border-strong) transparent;
 }
 
 .game-tab {
@@ -299,7 +355,7 @@ button:disabled:hover { background: #4b8bf4; }
     gap: 6px;
     padding: 7px 12px;
     border-bottom: 2px solid transparent;
-    color: rgba(255,255,255,0.4);
+    color: var(--text-secondary);
     font-size: 0.82rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -314,11 +370,11 @@ button:disabled:hover { background: #4b8bf4; }
     transition: color 0.15s, border-color 0.15s;
 }
 
-.game-tab:hover { color: rgba(255,255,255,0.7); }
+.game-tab:hover { color: var(--text-secondary); }
 
 .game-tab.active {
-    color: #fff;
-    border-bottom-color: #4b8bf4;
+    color: var(--text);
+    border-bottom-color: var(--accent);
 }
 
 .game-tab .tab-close {
@@ -326,15 +382,15 @@ button:disabled:hover { background: #4b8bf4; }
     opacity: 0;
     line-height: 1;
     transition: opacity 0.15s;
-    color: rgba(255,255,255,0.4);
+    color: var(--text-secondary);
 }
 
 .game-tab:hover .tab-close { opacity: 1; }
-.game-tab .tab-close:hover { color: #f87171; }
+.game-tab .tab-close:hover { color: var(--danger-text); }
 
 .game-tab-add {
     padding: 7px 10px;
-    color: rgba(255,255,255,0.2);
+    color: var(--text-dim);
     font-size: 1.1rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -348,13 +404,13 @@ button:disabled:hover { background: #4b8bf4; }
     line-height: 1;
 }
 
-.game-tab-add:hover { color: rgba(255,255,255,0.5); }
+.game-tab-add:hover { color: var(--text-secondary); }
 
 /* 游戏标签内联编辑 input */
 .game-tab input {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #fff;
+    background: var(--surface-hover);
+    border: 1px solid var(--text-dim);
+    color: var(--text);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 0.82rem;
@@ -372,7 +428,7 @@ button:disabled:hover { background: #4b8bf4; }
 
 .slot-tabs-label {
     font-size: 0.7rem;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
     margin-right: 4px;
     flex-shrink: 0;
 }
@@ -382,10 +438,10 @@ button:disabled:hover { background: #4b8bf4; }
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 15px;
-    color: rgba(255,255,255,0.5);
+    color: var(--text-secondary);
     font-size: 0.78rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -395,12 +451,12 @@ button:disabled:hover { background: #4b8bf4; }
     margin: 0;
 }
 
-.slot-tag:hover { color: rgba(255,255,255,0.8); }
+.slot-tag:hover { color: var(--text); }
 
 .slot-tag.active {
     background: rgba(75,139,244,0.2);
     border-color: rgba(75,139,244,0.35);
-    color: #fff;
+    color: var(--text);
 }
 
 .slot-tag .tag-close {
@@ -408,15 +464,15 @@ button:disabled:hover { background: #4b8bf4; }
     opacity: 0;
     line-height: 1;
     transition: opacity 0.15s;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
 }
 
 .slot-tag:hover .tag-close { opacity: 1; }
-.slot-tag .tag-close:hover { color: #f87171; }
+.slot-tag .tag-close:hover { color: var(--danger-text); }
 
 .slot-tag-add {
     padding: 4px 8px;
-    color: rgba(255,255,255,0.2);
+    color: var(--text-dim);
     font-size: 1rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -428,14 +484,14 @@ button:disabled:hover { background: #4b8bf4; }
     line-height: 1;
 }
 
-.slot-tag-add:hover { color: rgba(255,255,255,0.5); }
+.slot-tag-add:hover { color: var(--text-secondary); }
 
 /* 存档位内联编辑 input */
 .slot-tag input {
     background: transparent;
     border: none;
-    border-bottom: 1px solid rgba(255,255,255,0.3);
-    color: #fff;
+    border-bottom: 1px solid var(--text-muted);
+    color: var(--text);
     padding: 1px 4px;
     font-size: 0.78rem;
     width: 60px;
@@ -446,7 +502,7 @@ button:disabled:hover { background: #4b8bf4; }
 .convert-section {
     margin-bottom: 1.2rem;
     padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border);
 }
 
 .convert-section:last-of-type {
@@ -466,14 +522,14 @@ button:disabled:hover { background: #4b8bf4; }
 
 .result {
     margin-top: 0.8rem;
-    background: rgba(255,255,255,0.04);
+    background: var(--surface);
     border-radius: 10px;
     padding: 0.7rem 1rem;
     text-align: center;
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
     font-size: 1.3rem;
     font-weight: 700;
-    color: rgba(255,255,255,0.9);
+    color: var(--text);
     word-break: break-all;
     font-family: monospace;
     min-height: 2.5rem;
@@ -484,8 +540,8 @@ button:disabled:hover { background: #4b8bf4; }
 
 /* ==================== 消息提示 ==================== */
 .error {
-    color: #fca5a5;
-    background: rgba(220,38,38,0.12);
+    color: var(--error-text);
+    background: var(--error-bg);
     border-radius: 8px;
     padding: 0.5rem;
     margin-top: 0.8rem;
@@ -495,8 +551,8 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .success {
-    color: #86efac;
-    background: rgba(22,163,74,0.12);
+    color: var(--success-text);
+    background: var(--success-bg);
     border-radius: 8px;
     padding: 0.5rem;
     margin-top: 0.8rem;
@@ -507,7 +563,7 @@ button:disabled:hover { background: #4b8bf4; }
 
 /* ==================== 路径提示 ==================== */
 .path-hint {
-    color: rgba(255,255,255,0.35);
+    color: var(--text-muted);
     font-size: 0.8rem;
     padding: 0.5rem;
     overflow: hidden;
@@ -522,7 +578,7 @@ button:disabled:hover { background: #4b8bf4; }
 
 .empty-hint {
     text-align: center;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
     padding: 1.5rem;
     font-size: 0.85rem;
 }
@@ -532,12 +588,12 @@ button:disabled:hover { background: #4b8bf4; }
     align-items: center;
     gap: 0.4rem;
     padding: 0.5rem 0.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--surface);
     font-size: 0.82rem;
     border-radius: 4px;
 }
 
-.backup-item:hover { background: rgba(255,255,255,0.03); }
+.backup-item:hover { background: var(--surface); }
 
 /* 哈希相同标记 */
 .backup-item.hash-match {
@@ -546,13 +602,13 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .backup-item.hash-duplicate {
-    border-left: 3px solid #fbbf24;
+    border-left: 3px solid var(--pin-color);
     background: rgba(251,191,36,0.06);
 }
 
 .backup-item .name {
     flex: 1;
-    color: rgba(255,255,255,0.8);
+    color: var(--text);
     font-size: 0.82rem;
 }
 
@@ -570,12 +626,12 @@ button:disabled:hover { background: #4b8bf4; }
 
 .hash-badge.duplicate {
     background: rgba(251,191,36,0.2);
-    color: #fbbf24;
+    color: var(--pin-color);
 }
 
 .backup-item .original-path {
     font-size: 0.7rem;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
     max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -586,8 +642,8 @@ button:disabled:hover { background: #4b8bf4; }
 .timezone-sets { margin-bottom: 8px; }
 
 .tz-set {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px;
     margin-bottom: 8px;
@@ -614,36 +670,36 @@ button:disabled:hover { background: #4b8bf4; }
 
 .tz-label {
     font-size: 0.78rem;
-    color: rgba(255,255,255,0.55);
+    color: var(--text-secondary);
     padding: 4px 0;
     font-weight: 500;
 }
 
 .tz-tz-select {
     padding: 4px 6px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--input-bg);
+    border: 1px solid var(--surface-hover);
     border-radius: 5px;
-    color: #fff;
+    color: var(--text);
     font-size: 0.75rem;
     width: auto;
     cursor: pointer;
 }
 
-.tz-tz-select option { background: #212539; color: #fff; }
+.tz-tz-select option { background: var(--bg); color: var(--text); }
 
 .tz-format-select {
     padding: 3px 5px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--input-bg);
+    border: 1px solid var(--surface-hover);
     border-radius: 4px;
-    color: rgba(255,255,255,0.45);
+    color: var(--text-secondary);
     font-size: 0.6rem;
     width: auto;
     cursor: pointer;
 }
 
-.tz-format-select option { background: #212539; color: #fff; }
+.tz-format-select option { background: var(--bg); color: var(--text); }
 
 .tz-pin {
     font-size: 0.75rem;
@@ -652,26 +708,26 @@ button:disabled:hover { background: #4b8bf4; }
     padding: 0 2px;
 }
 
-.tz-pin.on { color: #fbbf24; }
-.tz-pin.off { color: rgba(255,255,255,0.12); }
-.tz-pin.off:hover { color: rgba(255,255,255,0.3); }
+.tz-pin.on { color: var(--pin-color); }
+.tz-pin.off { color: var(--border-strong); }
+.tz-pin.off:hover { color: var(--text-muted); }
 
 .tz-reset {
     font-size: 0.6rem;
     padding: 2px 6px;
-    background: rgba(255,255,255,0.06);
+    background: var(--border);
     border-radius: 3px;
-    color: rgba(255,255,255,0.3);
+    color: var(--text-muted);
     cursor: pointer;
     width: auto;
     margin: 0;
 }
 
-.tz-reset:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
+.tz-reset:hover { background: var(--border-strong); color: var(--text-secondary); }
 
 .tz-delete {
     font-size: 1rem;
-    color: rgba(255,255,255,0.18);
+    color: var(--text-dim);
     cursor: pointer;
     width: auto;
     margin: 0;
@@ -681,7 +737,7 @@ button:disabled:hover { background: #4b8bf4; }
     line-height: 1;
 }
 
-.tz-delete:hover { color: #f87171; }
+.tz-delete:hover { color: var(--danger-text); }
 
 .tz-row {
     display: flex;
@@ -692,18 +748,18 @@ button:disabled:hover { background: #4b8bf4; }
 .tz-row input {
     flex: 1;
     padding: 5px 7px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--input-bg);
+    border: 1px solid var(--surface-hover);
     border-radius: 5px;
-    color: #fff;
+    color: var(--text);
     font-size: 0.72rem;
 }
 
-.tz-row input::placeholder { color: rgba(255,255,255,0.25); }
+.tz-row input::placeholder { color: var(--text-muted); }
 
 .tz-copy {
     font-size: 0.7rem;
-    color: rgba(255,255,255,0.15);
+    color: var(--text-dim);
     cursor: pointer;
     flex-shrink: 0;
     width: auto;
@@ -713,7 +769,7 @@ button:disabled:hover { background: #4b8bf4; }
     border: none;
 }
 
-.tz-copy:hover { color: rgba(255,255,255,0.5); }
+.tz-copy:hover { color: var(--text-secondary); }
 
 .tz-arrows {
     display: flex;
@@ -724,9 +780,9 @@ button:disabled:hover { background: #4b8bf4; }
 
 .tz-arrow {
     padding: 2px 7px;
-    background: #4b8bf4;
+    background: var(--accent);
     border-radius: 4px;
-    color: #fff;
+    color: var(--text);
     font-size: 0.65rem;
     cursor: pointer;
     text-align: center;
@@ -735,22 +791,22 @@ button:disabled:hover { background: #4b8bf4; }
     line-height: 1.2;
 }
 
-.tz-arrow:hover { background: #5c9af7; }
+.tz-arrow:hover { background: var(--accent-hover); }
 
 .tz-add-btn {
     width: 100%;
     margin: 0;
     padding: 5px;
-    background: rgba(255,255,255,0.04);
-    border: 1px dashed rgba(255,255,255,0.08);
+    background: var(--surface);
+    border: 1px dashed var(--surface-hover);
     border-radius: 6px;
     text-align: center;
     font-size: 0.78rem;
-    color: rgba(255,255,255,0.15);
+    color: var(--text-dim);
     cursor: pointer;
 }
 
-.tz-add-btn:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.3); }
+.tz-add-btn:hover { background: var(--surface-hover); color: var(--text-muted); }
 
 /* ==================== 模态弹窗 ==================== */
 .modal-overlay {
@@ -765,11 +821,11 @@ button:disabled:hover { background: #4b8bf4; }
 }
 
 .modal {
-    background: #212539;
-    border: 1px solid rgba(255,255,255,0.1);
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
     border-radius: 12px;
     width: 380px;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    box-shadow: 0 12px 40px var(--shadow);
     overflow: hidden;
 }
 
@@ -778,18 +834,18 @@ button:disabled:hover { background: #4b8bf4; }
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--border);
 }
 
 .modal-title {
     font-weight: 600;
     font-size: 0.9rem;
-    color: #fff;
+    color: var(--text);
 }
 
 .modal-close {
     font-size: 1.2rem;
-    color: rgba(255,255,255,0.4);
+    color: var(--text-secondary);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -799,13 +855,13 @@ button:disabled:hover { background: #4b8bf4; }
     line-height: 1;
 }
 
-.modal-close:hover { color: rgba(255,255,255,0.8); }
+.modal-close:hover { color: var(--text); }
 
 .modal-body { padding: 16px; }
 
 .settings-hint {
     font-size: 0.7rem;
-    color: rgba(255,255,255,0.15);
+    color: var(--text-dim);
     text-align: center;
     padding: 8px 0;
 }

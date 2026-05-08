@@ -103,7 +103,11 @@ struct AppConfig {
     games: Vec<GameConfig>,
     #[serde(default = "default_timezone_sets")]
     timezone_sets: Vec<TimezoneSet>,
+    #[serde(default = "default_theme")]
+    theme: String,
 }
+
+fn default_theme() -> String { "dark".to_string() }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -111,6 +115,7 @@ impl Default for AppConfig {
             backup_root: String::new(),
             games: vec![],
             timezone_sets: default_timezone_sets(),
+            theme: default_theme(),
         }
     }
 }
