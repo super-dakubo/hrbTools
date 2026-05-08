@@ -925,10 +925,10 @@ settingsOpenDirBtn.addEventListener('click', async () => {
 function updateSettingsDisplay() {
     if (currentConfig.backup_root) {
         settingsBackupRoot.textContent = currentConfig.backup_root;
-        settingsBackupRoot.style.color = 'rgba(255,255,255,0.7)';
+        settingsBackupRoot.classList.add('has-value');
     } else {
         settingsBackupRoot.textContent = '未设置';
-        settingsBackupRoot.style.color = 'rgba(255,255,255,0.3)';
+        settingsBackupRoot.classList.remove('has-value');
     }
 }
 
