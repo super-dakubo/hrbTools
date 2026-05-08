@@ -788,7 +788,8 @@ settingsOpenDirBtn.addEventListener('click', async () => {
         alert('请先设置备份根目录');
         return;
     }
-    await invoke('open_folder', { path: currentConfig.backup_root });
+    const result = await invoke('open_folder', { path: currentConfig.backup_root });
+    if (!result.success) alert('打开失败: ' + result.message);
 });
 
 function updateSettingsDisplay() {
