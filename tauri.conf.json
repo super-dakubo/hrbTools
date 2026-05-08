@@ -20,7 +20,7 @@
         "title": "HRB Tools",
         "width": 640,
         "height": 520,
-        "maxWidth": 750
+        "resizable": false
       }
     ]
   }
