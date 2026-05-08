@@ -35,22 +35,22 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 | 变量 | 暗色值 | 亮色值 | 用途 |
 |------|--------|--------|------|
-| `--bg` | `#212539` | `#f0f2f5` | 主背景 |
-| `--bg-alt` | `#1a1e2e` | `#e4e6e9` | 备选背景 |
-| `--surface` | `rgba(255,255,255,0.04)` | `rgba(0,0,0,0.03)` | 卡片/面板底 |
-| `--surface-hover` | `rgba(255,255,255,0.07)` | `rgba(0,0,0,0.06)` | hover 态 |
-| `--input-bg` | `rgba(255,255,255,0.05)` | `rgba(0,0,0,0.04)` | 输入框背景 |
-| `--titlebar-bg` | `rgba(0,0,0,0.3)` | `rgba(0,0,0,0.08)` | 标题栏 |
-| `--tab-bar-bg` | `rgba(0,0,0,0.25)` | `rgba(0,0,0,0.04)` | 左侧 Tab 栏 |
+| `--bg` | `#212539` | `#f5f6f8` | 主背景 |
+| `--bg-alt` | `#1a1e2e` | `#e8eaef` | 备选背景 |
+| `--surface` | `rgba(255,255,255,0.04)` | `rgba(0,0,0,0.04)` | 卡片/面板底 |
+| `--surface-hover` | `rgba(255,255,255,0.07)` | `rgba(0,0,0,0.07)` | hover 态 |
+| `--input-bg` | `rgba(255,255,255,0.05)` | `#fff` | 输入框背景 |
+| `--titlebar-bg` | `rgba(0,0,0,0.3)` | `#fff` | 标题栏 |
+| `--tab-bar-bg` | `rgba(0,0,0,0.25)` | `rgba(0,0,0,0.03)` | 左侧 Tab 栏 |
 
 ### 文字色
 
 | 变量 | 用途 |
 |------|------|
-| `--text` | 主文字 |
-| `--text-secondary` | 标签、描述文字 |
-| `--text-muted` | 占位符、提示 |
-| `--text-dim` | 极淡文字 |
+| `--text` | `rgba(255,255,255,0.85)` | `rgba(0,0,0,0.85)` | 主文字 |
+| `--text-secondary` | `rgba(255,255,255,0.55)` | `rgba(0,0,0,0.58)` | 标签、描述 |
+| `--text-muted` | `rgba(255,255,255,0.3)` | `rgba(0,0,0,0.38)` | 占位符、提示 |
+| `--text-dim` | `rgba(255,255,255,0.15)` | `rgba(0,0,0,0.2)` | 极淡文字 |
 
 ### 边框色
 
@@ -63,8 +63,8 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 | 变量 | 用途 |
 |------|------|
-| `--accent` | 主按钮、激活态（`#4b8bf4`） |
-| `--accent-hover` | 按钮 hover（`#5c9af7`） |
+| `--accent` | 主按钮（暗 `#4b8bf4` / 亮 `#2563eb`） |
+| `--accent-hover` | 按钮 hover（暗 `#5c9af7` / 亮 `#3b82f6`） |
 | `--danger-bg/text/border` | 危险操作（删除等） |
 | `--success-bg/text` | 成功提示 |
 | `--error-bg/text` | 错误提示 |
@@ -135,7 +135,7 @@ window.matchMedia('(prefers-color-scheme: dark)')
 - `border-radius: var(--radius)`（主）/ `var(--radius-sm)`（小）
 - `disabled` 态：`opacity: 0.5; cursor: not-allowed`
 - 异步操作必须调用 `setButtonLoading()` / `resetButton()` 防重复
-- 所有按钮文字使用 `var(--text)`，确保主题适配
+- 主按钮文字 `color: #fff`（白色），不受主题影响
 
 ### 输入框
 
