@@ -26,7 +26,6 @@ const closeBtn = document.getElementById('closeBtn');
 // 存档管理
 const gameTabs = document.getElementById('gameTabs');
 const slotTabs = document.getElementById('slotTabs');
-const filePathInput = document.getElementById('filePath');
 const fileTagsContainer = document.getElementById('fileTags');
 const browseFileBtn = document.getElementById('browseFileBtn');
 const rehashBtn = document.getElementById('rehashBtn');
