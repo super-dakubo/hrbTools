@@ -699,8 +699,9 @@ async function handleRenameBackup(folderName, currentDesc) {
 
 async function handleOpenBackupFolder(folderName) {
     if (!currentConfig.backup_root || !selectedGameId || !selectedSlotId) return;
-    const folderPath = `${currentConfig.backup_root}/${selectedGameId}/${selectedSlotId}/${folderName}`;
-    await invoke('open_folder', { path: folderPath });
+    const folderPath = [currentConfig.backup_root, selectedGameId, selectedSlotId, folderName].join('\\');
+    const result = await invoke('open_folder', { path: folderPath });
+    if (!result.success) alert('打开失败: ' + result.message);
 }
 
 async function handleRehashBackup(btn, folderName) {
