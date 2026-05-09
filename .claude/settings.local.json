@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo search:*)"
+      "Bash(cargo search:*)",
+      "Bash(cargo tauri dev)",
+      "Bash(cargo tauri build)",
+      "Bash(git push *)",
+      "Read(//c/Users/PC_WIN10/.claude/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(git push --force)",
+      "Bash(git reset --hard)"
+    ],
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\Users\\PC_WIN10\\.claude",
+      "d:\\code\\hello_world\\.claude\\skills"
     ]
   }
 }
