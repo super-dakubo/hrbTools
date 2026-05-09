@@ -1171,6 +1171,13 @@ button:disabled:hover { background: var(--accent); }
     color: var(--text-muted);
 }
 
+.todo-completed-at {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
 .todo-tags {
     display: flex;
     gap: 3px;

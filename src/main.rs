@@ -226,6 +226,8 @@ struct TodoItem {
     #[serde(default)]
     last_notified: Option<i64>,
     #[serde(default)]
+    completed_at: Option<String>,
+    #[serde(default)]
     parent_id: Option<String>,
 }
 

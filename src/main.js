@@ -1394,6 +1394,17 @@ function getReminderDisplay(todo) {
     return '<span class="' + cls + '" data-action="toggle-pause">' + icon + ' ' + text + '</span>';
 }
 
+function formatCompletedTime(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var h = String(d.getHours()).padStart(2, '0');
+    var min = String(d.getMinutes()).padStart(2, '0');
+    return y + '-' + m + '-' + day + ' ' + h + ':' + min;
+}
+
 function autoClearExpiredPaused() {
     var changed = false;
     (currentConfig.todos || []).forEach(function(t) {
@@ -1465,6 +1476,7 @@ function renderTodos() {
             + '<span class="todo-check" data-action="toggle-todo">' + (t.done ? '✓' : '') + '</span>'
             + (t.priority > 0 ? '<span class="todo-priority ' + priClass + '">' + priLabel + '</span>' : '')
             + '<span class="todo-text" data-action="edit-todo">' + escapeHtml(t.text) + '</span>'
+            + (t.done && t.completed_at ? '<span class="todo-completed-at">' + formatCompletedTime(t.completed_at) + '</span>' : '')
             + reminderHtml
             + (tagsHtml ? '<span class="todo-tags">' + tagsHtml + '</span>' : '')
             + '<button class="todo-delete-btn" data-action="delete-todo" title="删除">×</button>'
@@ -1528,15 +1540,17 @@ function toggleTodoDone(id) {
     if (!todo.done) {
         // 完成 — 翻转 done 并生成克隆
         todo.done = true;
+        todo.completed_at = new Date().toISOString();
         if (todo.repeat) {
             var newTodo = createNextRepeat(todo);
             if (newTodo) currentConfig.todos.push(newTodo);
         }
     } else {
-        // 取消完成 — 删除克隆项，翻转 done，重置时间
+        // 取消完成 — 删除克隆项，翻转 done，置空完成时间，重置时间
         var childIndex = currentConfig.todos.findIndex(function(t) { return t.parent_id === todo.id; });
         if (childIndex !== -1) currentConfig.todos.splice(childIndex, 1);
         todo.done = false;
+        todo.completed_at = null;
         if (todo.repeat) recalculateNextDue(todo);
     }
 
