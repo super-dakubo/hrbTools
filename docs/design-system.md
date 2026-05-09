@@ -6,6 +6,11 @@
 
 ## 1. 主题系统
 
+### 主题色
+
+— **暗色模式**：深蓝底色（`#212539`）+ 蓝色强调（`#4b8bf4`）
+— **亮色模式**：**白色底色 + 青绿色强调**（`#0d9488`），清新干净、不刺眼
+
 ### 三种模式
 
 | 模式 | config 值 | 行为 |
@@ -63,8 +68,9 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 | 变量 | 用途 |
 |------|------|
-| `--accent` | 主按钮（暗 `#4b8bf4` / 亮 `#2563eb`） |
-| `--accent-hover` | 按钮 hover（暗 `#5c9af7` / 亮 `#3b82f6`） |
+| `--accent` | 主按钮、选中态（暗 `#4b8bf4` / **亮 `#0d9488` 青绿**） |
+| `--accent-hover` | 按钮 hover（暗 `#5c9af7` / **亮 `#0f766e` 深青绿**） |
+| `--accent-rgb` | accent 的 RGB 分量，用于 `rgba(var(--accent-rgb), ...)` （暗 `75,139,244` / 亮 `13,148,136`） |
 | `--danger-bg/text/border` | 危险操作（删除等） |
 | `--success-bg/text` | 成功提示 |
 | `--error-bg/text` | 错误提示 |
@@ -86,6 +92,11 @@ window.matchMedia('(prefers-color-scheme: dark)')
 | `--font-md` | `0.9rem` | h3 标题、输入框 |
 | `--font-lg` | `1.1rem` | h1 面板标题 |
 | `--font-xl` | `1.3rem` | 转换结果大字 |
+
+### 基准
+
+- **根字号**：`html { font-size: 18px }`（默认 16px），所有 `rem` 值以此基准缩放
+- 实际像素 = 变量值 × 18，如 `--font-base: 0.8rem` = 14.4px
 
 ### 规则
 
@@ -159,7 +170,7 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 ### 新增 UI 前必读
 
-1. 颜色：只用 CSS 变量，不写硬编码色值
+1. 颜色：只用 CSS 变量，不写硬编码色值；**如需 `rgba()` 透明度，用 `rgba(var(--accent-rgb), 透明度)`**
 2. 字号：用排版变量，不写裸 `font-size`
 3. 圆角/间距：用对应变量
 4. 主题适配：新增组件需在暗/亮两种模式下测试
@@ -180,7 +191,7 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 ## 8. 窗口标准
 
-- 尺寸：700×580（tauri.conf.json）
+- 尺寸：780×640（tauri.conf.json），启动位置居中偏上
 - 不可缩放：`resizable: false`
 - 无边框：`decorations: false`
 - 自定义标题栏：`.title-bar`，拖拽区域 `-webkit-app-region: drag`

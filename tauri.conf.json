@@ -18,8 +18,8 @@
     "windows": [
       {
         "title": "HRB Tools",
-        "width": 700,
-        "height": 580,
+        "width": 780,
+        "height": 640,
         "resizable": false,
         "decorations": false
       }

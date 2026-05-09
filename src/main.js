@@ -48,8 +48,9 @@ const TAB_DEFS = {
     convert: { icon: '&#9202;', label: '时间转换' },
     backup:  { icon: '&#128190;', label: '存档管理' },
     todo:    { icon: '&#128203;', label: '待办工具' },
+    log:     { icon: '📋', label: '日志' },
 };
-const DEFAULT_TAB_ORDER = ['convert', 'backup', 'todo'];
+const DEFAULT_TAB_ORDER = ['convert', 'backup', 'todo', 'log'];
 let currentTab = 'convert';
 
 function renderTabBar() {
@@ -166,15 +167,35 @@ function bindTabEvents() {
 }
 
 function switchTab(tabId) {
+    var t0 = performance.now();
+
     currentTab = tabId;
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    const tab = document.querySelector(`.tab[data-tab="${tabId}"]`);
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    var tab = document.querySelector('.tab[data-tab="' + tabId + '"]');
     if (tab) tab.classList.add('active');
-    const panel = document.getElementById('panel-' + tabId);
+    var panel = document.getElementById('panel-' + tabId);
     if (panel) panel.classList.add('active');
-    if (tabId === 'backup') refreshAll();
-    if (tabId === 'todo') renderTodos();
+
+    var t1 = performance.now();
+
+    if (tabId === 'backup') { refreshAll(); }
+    else if (tabId === 'todo') { renderTodos(); }
+    else if (tabId === 'log') { renderLogPanel(); }
+
+    var t2 = performance.now();
+
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            var renderEnd = performance.now();
+            window.__log.perf('TabSwitch', '切到' + tabId, {
+                dom: +(t1 - t0).toFixed(2),
+                action: +(t2 - t1).toFixed(2),
+                render: +(renderEnd - t2).toFixed(2),
+                total: +(renderEnd - t0).toFixed(2)
+            });
+        });
+    });
 }
 
 // ==================== 时间转换 ====================
@@ -883,6 +904,7 @@ saveBackupBtn.addEventListener('click', async () => {
         });
         if (result.success) {
             showBackupSuccess(result.message);
+            window.__log.info('Backup', '保存存档成功');
             await refreshCurrentHashes();
             refreshBackupList();
         } else {
@@ -1352,6 +1374,7 @@ function shortenPath(path) {
 }
 
 function refreshAll() {
+    var t0 = performance.now();
     renderGameTabs();
     renderSlotTabs();
     if (selectedGameId && selectedSlotId) {
@@ -1359,6 +1382,7 @@ function refreshAll() {
         refreshCurrentHashes();
         refreshBackupList();
     }
+    window.__log.perf('Backup', '刷新备份列表', { ms: +(performance.now() - t0).toFixed(2) });
 }
 
 // ==================== 待办工具 ====================
@@ -1545,6 +1569,7 @@ function toggleTodoDone(id) {
             var newTodo = createNextRepeat(todo);
             if (newTodo) currentConfig.todos.push(newTodo);
         }
+        window.__log.info('Todo', '完成任务: ' + todo.text);
     } else {
         // 取消完成 — 删除克隆项，翻转 done，置空完成时间，重置时间
         var childIndex = currentConfig.todos.findIndex(function(t) { return t.parent_id === todo.id; });
@@ -1552,6 +1577,7 @@ function toggleTodoDone(id) {
         todo.done = false;
         todo.completed_at = null;
         if (todo.repeat) recalculateNextDue(todo);
+        window.__log.info('Todo', '取消完成任务: ' + todo.text);
     }
 
     saveConfigToBackend();
@@ -1559,6 +1585,8 @@ function toggleTodoDone(id) {
 }
 
 function deleteTodo(id) {
+    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+    if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
     currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
     saveConfigToBackend();
     renderTodos();
@@ -1765,10 +1793,211 @@ function openTodoEditModal(id) {
         todo.repeat = overlay.querySelector('#editRepeat').value || null;
         overlay.remove();
         saveConfigToBackend();
+        if (isNew) {
+            window.__log.info('Todo', '新增待办: ' + todo.text + (todo.repeat ? ' [repeat:' + todo.repeat + ']' : '') + (todo.priority > 1 ? ' [p:' + todo.priority + ']' : ''));
+        } else {
+            window.__log.info('Todo', '编辑待办: ' + todo.text);
+        }
         renderTodos();
     });
 }
 
 // ==================== 启动 ====================
 
-loadConfig();
+document.addEventListener('DOMContentLoaded', async function() {
+    // 第一步：必须同步的操作 — 加载配置、应用主题
+    await loadConfig();
+
+    // 第二步：分步渲染，避免阻塞首帧
+    requestAnimationFrame(function() {
+        // Tab 栏（首帧已由 loadConfig 渲染）
+
+        requestAnimationFrame(function() {
+            // 内容面板（首帧已由 switchTab 渲染）
+
+            // 第三步：日志面板事件绑定 + 加载历史日志（不阻塞首帧）
+            setTimeout(function() {
+                bindLogPanelEvents();
+                window.__log.loadFromFile();
+            }, 100);
+        });
+    });
+});
+
+// ==================== 日志系统 ====================
+
+(function() {
+    var LEVEL_MAP = { DEBUG: 0, INFO: 1, PERF: 2, WARN: 3, ERROR: 4 };
+    var MAX = 2000;
+    var FLUSH_MS = 10000;
+    var FLUSH_AT = 100;
+    var buffer = [];
+    var minLv = 1;   // 默认 INFO
+    var busy = false;
+    var timer = null;
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function pad3(n) { return String(n).padStart(3, '0'); }
+
+    function fmtTime(ts) {
+        var d = new Date(ts);
+        return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate())
+            + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':'
+            + pad2(d.getSeconds()) + '.' + pad3(d.getMilliseconds());
+    }
+
+    function fmt(entry) {
+        var lv = entry.level.padEnd(5);
+        var src = (entry.source||'').padEnd(10);
+        return '[' + fmtTime(entry.time) + '][' + lv + '][' + src + '] ' + entry.message;
+    }
+
+    function doFlush() {
+        if (busy || buffer.length === 0) return;
+        busy = true;
+        // 写所有级别到文件（buffer 保留给应用内查看，由 push 中的 MAX 控制上限）
+        var lines = buffer.map(fmt);
+        if (lines.length) {
+            try {
+                window.__TAURI_INTERNALS__.invoke('log_write', { lines: lines })
+                    .catch(function(err) {
+                        console.warn('日志写入失败', err);
+                    })
+                    .finally(function() { busy = false; });
+            } catch(e) { busy = false; }
+        } else {
+            busy = false;
+        }
+    }
+
+    function schedule() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function() { doFlush(); schedule(); }, FLUSH_MS);
+    }
+
+    function push(lv, src, msg, data) {
+        if (LEVEL_MAP[lv] < minLv) return;
+        buffer.push({ time: Date.now(), level: lv, source: src, message: String(msg), data: data });
+        if (buffer.length > MAX) buffer.splice(0, buffer.length - MAX);
+        if (buffer.length >= FLUSH_AT) doFlush();
+    }
+
+    // 解析文件中的日志行：[timestamp][level][source] message
+    function parseLogLine(line) {
+        var m = line.match(/^\[(.+?)\]\[(.+?)\]\[(.+?)\]\s(.+)$/);
+        if (!m) return null;
+        var ts = new Date(m[1].replace(' ', 'T') + (m[1].length === 23 ? '' : '.000')).getTime();
+        return {
+            time: isNaN(ts) ? Date.now() : ts,
+            level: m[2].trim(),
+            source: m[3].trim(),
+            message: m[4]
+        };
+    }
+
+    window.__log = {
+        debug: function(s,m,d) { push('DEBUG',s,m,d); },
+        info:  function(s,m,d) { push('INFO', s,m,d); },
+        perf:  function(s,m,d) { push('PERF', s,m,d); },
+        warn:  function(s,m,d) { push('WARN', s,m,d); },
+        error: function(s,m,d) { push('ERROR',s,m,d); },
+        flush: doFlush,
+        setLevel: function(l) { if (LEVEL_MAP[l] !== void 0) minLv = LEVEL_MAP[l]; },
+        loadFromFile: function() {
+            window.__TAURI_INTERNALS__.invoke('read_today_logs', {}).then(function(lines) {
+                for (var i = 0; i < lines.length; i++) {
+                    var entry = parseLogLine(lines[i]);
+                    if (entry) buffer.push(entry);
+                }
+                if (buffer.length > MAX) buffer.splice(0, buffer.length - MAX);
+                // 如果日志面板正在显示，刷新渲染
+                var panel = document.getElementById('panel-log');
+                if (panel && panel.classList.contains('active')) renderLogPanel();
+            }).catch(function() {});
+        },
+        getEntries: function(f) {
+            var r = buffer.slice();
+            if (f) {
+                if (f.level && f.level !== 'ALL') r = r.filter(function(e){return e.level===f.level;});
+                if (f.search) {
+                    var q = f.search.toLowerCase();
+                    r = r.filter(function(e){ return e.message.toLowerCase().indexOf(q)!==-1 || (e.source||'').toLowerCase().indexOf(q)!==-1; });
+                }
+                if (f.source) r = r.filter(function(e){return e.source===f.source;});
+            }
+            return r.reverse();
+        },
+        clear: function() { buffer.length = 0; },
+        export: function() {
+            var text = buffer.map(fmt).join('\n');
+            var blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'logs_' + new Date().toISOString().slice(0,10) + '.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    };
+    schedule();
+})();
+
+// ==================== 日志面板渲染 ====================
+
+function renderLogPanel() {
+    var filterLevel = (document.getElementById('logLevelFilter') || {}).value || 'ALL';
+    var searchText = (document.getElementById('logSearch') || {}).value || '';
+    var entries = window.__log.getEntries({ level: filterLevel, search: searchText });
+    var container = document.getElementById('logEntries');
+    if (!container) return;
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="empty-hint">暂无日志</div>';
+        return;
+    }
+
+    var showCount = Math.min(entries.length, 500);
+    var html = '';
+    for (var i = 0; i < showCount; i++) {
+        var e = entries[i];
+        var d = new Date(e.time);
+        var time = String(d.getHours()).padStart(2,'0') + ':'
+            + String(d.getMinutes()).padStart(2,'0') + ':'
+            + String(d.getSeconds()).padStart(2,'0') + '.'
+            + String(d.getMilliseconds()).padStart(3,'0');
+        var lv = e.level;
+        var src = e.source || '';
+        var msg = e.message;
+        msg = msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        src = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html += '<div class="log-entry">'
+            + '<span class="log-entry-time">' + time + '</span>'
+            + '<span class="log-entry-level L_' + lv + '">' + lv + '</span>'
+            + '<span class="log-entry-source">' + src + '</span>'
+            + '<span class="log-entry-msg">' + msg + '</span>'
+            + '</div>';
+    }
+    if (entries.length > 500) {
+        html += '<div class="empty-hint" style="padding:8px;text-align:center">'
+            + '显示最近 500 条，共 ' + entries.length + ' 条</div>';
+    }
+    container.innerHTML = html;
+}
+
+function bindLogPanelEvents() {
+    var logSearch = document.getElementById('logSearch');
+    var logFilter = document.getElementById('logLevelFilter');
+    var logOpenDir = document.getElementById('logOpenDirBtn');
+    var logClear  = document.getElementById('logClearBtn');
+    if (logSearch) logSearch.addEventListener('input', renderLogPanel);
+    if (logFilter) logFilter.addEventListener('change', renderLogPanel);
+    if (logOpenDir) logOpenDir.addEventListener('click', function() {
+        invoke('open_log_folder').catch(function(err) {
+            console.warn('打开日志目录失败', err);
+        });
+    });
+    if (logClear)  logClear.addEventListener('click', function() {
+        window.__log.clear();
+        renderLogPanel();
+    });
+}

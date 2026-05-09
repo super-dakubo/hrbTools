@@ -102,6 +102,26 @@
             </div>
         </div>
 
+        <!-- 日志面板 -->
+        <div class="panel" id="panel-log">
+            <div class="log-toolbar">
+                <input type="text" id="logSearch" class="log-search-input" placeholder="&#128269; 搜索日志...">
+                <select id="logLevelFilter" class="log-filter-select">
+                    <option value="ALL">全部</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="WARN">WARN</option>
+                    <option value="PERF">PERF</option>
+                    <option value="INFO">INFO</option>
+                    <option value="DEBUG">DEBUG</option>
+                </select>
+                <button id="logOpenDirBtn" class="btn-small">打开日志目录</button>
+                <button id="logClearBtn" class="btn-small">清屏</button>
+            </div>
+            <div id="logEntries" class="log-entries">
+                <div class="empty-hint">暂无日志</div>
+            </div>
+        </div>
+
         </div>
     </div>
 

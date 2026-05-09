@@ -215,13 +215,31 @@ body {
 .content {
     flex: 1;
     padding: 20px 24px;
-    overflow-y: auto;
     min-width: 0;
+    position: relative;
+    overflow: hidden;
 }
 
 /* ==================== 面板 ==================== */
-.panel { display: none; }
-.panel.active { display: block; }
+.panel {
+    display: block;
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    right: 24px;
+    bottom: 20px;
+    overflow-y: auto;
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    will-change: opacity;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.panel.active {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+}
 
 /* ==================== 共用组件 ==================== */
 h1 {
@@ -1310,10 +1328,94 @@ button:disabled:hover { background: var(--accent); }
 #panel-todo.active {
     display: flex;
     flex-direction: column;
-    height: 100%;
 }
 
 #panel-todo .todo-list {
     flex: 1;
     min-height: 0;
+}
+
+/* ==================== 日志面板 ==================== */
+#panel-log {
+    display: flex;
+    flex-direction: column;
+}
+
+.log-toolbar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+.log-search-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: var(--font-base);
+    outline: none;
+}
+.log-search-input:focus {
+    border-color: var(--accent);
+}
+.log-filter-select {
+    width: 75px;
+    flex-shrink: 0;
+    padding: 6px 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    font-size: var(--font-xs);
+}
+
+.log-entries {
+    flex: 1;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: var(--font-xs);
+    line-height: 1.6;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+}
+.log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 2px 4px;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-entry-time {
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 95px;
+}
+.log-entry-level {
+    flex-shrink: 0;
+    width: 44px;
+    font-weight: 600;
+}
+.log-entry-level.L_ERROR  { color: #ff4444; }
+.log-entry-level.L_WARN   { color: #ffaa00; }
+.log-entry-level.L_PERF   { color: #44aaff; }
+.log-entry-level.L_INFO   { color: var(--text); }
+.log-entry-level.L_DEBUG  { color: var(--text-muted); }
+.log-entry-source {
+    color: var(--accent);
+    flex-shrink: 0;
+    width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.log-entry-msg {
+    flex: 1;
+    word-break: break-all;
+    color: var(--text);
 }
