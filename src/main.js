@@ -1524,12 +1524,20 @@ function bindTodoEvents() {
 function toggleTodoDone(id) {
     var todo = currentConfig.todos.find(function(t) { return t.id === id; });
     if (!todo) return;
-    todo.done = !todo.done;
 
-    // 重复任务完成时自动创建下一周期
-    if (todo.done && todo.repeat) {
-        var newTodo = createNextRepeat(todo);
-        if (newTodo) currentConfig.todos.push(newTodo);
+    if (!todo.done) {
+        // 完成 — 翻转 done 并生成克隆
+        todo.done = true;
+        if (todo.repeat) {
+            var newTodo = createNextRepeat(todo);
+            if (newTodo) currentConfig.todos.push(newTodo);
+        }
+    } else {
+        // 取消完成 — 删除克隆项，翻转 done，重置时间
+        var childIndex = currentConfig.todos.findIndex(function(t) { return t.parent_id === todo.id; });
+        if (childIndex !== -1) currentConfig.todos.splice(childIndex, 1);
+        todo.done = false;
+        if (todo.repeat) recalculateNextDue(todo);
     }
 
     saveConfigToBackend();
@@ -1572,7 +1580,30 @@ function createNextRepeat(todo) {
         else if (todo.repeat === 'monthly') r.setMonth(r.getMonth() + 1);
         newTodo.reminder.datetime = r.toISOString().slice(0, 16);
     }
+    newTodo.parent_id = todo.id;   // 记录关联，供取消完成时查找删除
     return newTodo;
+}
+
+function recalculateNextDue(todo) {
+    if (!todo.due_date) return;
+    var due = new Date(todo.due_date);
+    var now = new Date();
+    // 仅当到期日已过期时重置到下一周期
+    if (due <= now) {
+        var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (todo.repeat === 'daily') next.setDate(next.getDate() + 1);
+        else if (todo.repeat === 'weekly') next.setDate(next.getDate() + 7);
+        else if (todo.repeat === 'monthly') next.setMonth(next.getMonth() + 1);
+        todo.due_date = next.toISOString().slice(0, 10);
+        if (todo.reminder && todo.reminder.datetime) {
+            var r = new Date(todo.reminder.datetime);
+            if (todo.repeat === 'daily') r.setDate(r.getDate() + 1);
+            else if (todo.repeat === 'weekly') r.setDate(r.getDate() + 7);
+            else if (todo.repeat === 'monthly') r.setMonth(r.getMonth() + 1);
+            todo.reminder.datetime = r.toISOString().slice(0, 16);
+        }
+    }
+    // 到期日未过期 → 不动
 }
 
 // 添加待办按钮
