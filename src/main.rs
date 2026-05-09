@@ -1190,6 +1190,16 @@ fn toggle_timezone_pin(app: tauri::AppHandle, set_id: String) -> OpResult {
 }
 
 #[tauri::command]
+fn send_notification(_app: tauri::AppHandle, title: String, body: String) -> OpResult {
+    let _ = notify_rust::Notification::new()
+        .summary(&title)
+        .body(&body)
+
+        .show();
+    OpResult { success: true, message: "已发送".to_string() }
+}
+
+#[tauri::command]
 fn window_minimize(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.minimize();
@@ -1216,6 +1226,93 @@ fn window_close(app: tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    let config_path = match app_handle.path().app_data_dir() {
+                        Ok(p) => p.join("config.json"),
+                        Err(_) => continue,
+                    };
+                    let json = match std::fs::read_to_string(&config_path) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    let raw: serde_json::Value = match serde_json::from_str(&json) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let mut config: AppConfig = match serde_json::from_value(raw) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let mut changed = false;
+
+                    for todo in config.todos.iter_mut() {
+                        if todo.done { continue; }
+                        let reminder = match &todo.reminder {
+                            Some(r) => r,
+                            None => continue,
+                        };
+                        let reminder_dt = match chrono::NaiveDateTime::parse_from_str(
+                            &reminder.datetime, "%Y-%m-%dT%H:%M"
+                        ) {
+                            Ok(dt) => dt,
+                            Err(_) => continue,
+                        };
+                        let reminder_ts = reminder_dt.and_utc().timestamp_millis();
+                        if reminder_ts <= now {
+                            let last = todo.last_notified.unwrap_or(0);
+                            if now - last < 60000 { continue; }
+                            let _ = notify_rust::Notification::new()
+                                .summary("HRB Tools")
+                                .body(&todo.text)
+                        
+                                .show();
+                            todo.last_notified = Some(now);
+                            changed = true;
+                            // 重复任务自动推期
+                            if let Some(repeat) = &todo.repeat {
+                                let mut next_dt = reminder_dt;
+                                let adv_due = |d: &mut Option<String>| {
+                                    if let &mut Some(ref due) = d {
+                                        if let Ok(due_d) = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d") {
+                                            let new_due = match repeat.as_str() {
+                                                "daily" => due_d + chrono::Days::new(1),
+                                                "weekly" => due_d + chrono::Days::new(7),
+                                                "monthly" => due_d + chrono::Months::new(1),
+                                                _ => due_d,
+                                            };
+                                            *d = Some(new_due.format("%Y-%m-%d").to_string());
+                                        }
+                                    }
+                                };
+                                match repeat.as_str() {
+                                    "daily" => next_dt += chrono::Duration::days(1),
+                                    "weekly" => next_dt += chrono::Duration::days(7),
+                                    "monthly" => next_dt = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt),
+                                    _ => {}
+                                }
+                                todo.reminder = Some(ReminderConfig {
+                                    datetime: next_dt.format("%Y-%m-%dT%H:%M").to_string(),
+                                    sound: reminder.sound,
+                                });
+                                adv_due(&mut todo.due_date);
+                            }
+                        }
+                    }
+
+                    if changed {
+                        if let Ok(json) = serde_json::to_string_pretty(&config) {
+                            let _ = std::fs::write(&config_path, json);
+                        }
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             convert_to_timestamp,
             convert_to_datetime,
@@ -1237,6 +1334,7 @@ fn main() {
             remove_timezone_set,
             update_timezone_set,
             toggle_timezone_pin,
+            send_notification,
             window_minimize,
             window_toggle_maximize,
             window_close,
