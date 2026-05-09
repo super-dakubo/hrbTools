@@ -22,15 +22,8 @@
     <div class="body-area">
 
         <!-- 左侧 Tab 栏 -->
-        <div class="tab-bar">
-            <button class="tab active" data-tab="convert">
-                <span class="tab-icon">&#9202;</span>
-                <span class="tab-label">时间转换</span>
-            </button>
-            <button class="tab" data-tab="backup">
-                <span class="tab-icon">&#128190;</span>
-                <span class="tab-label">存档管理</span>
-            </button>
+        <div class="tab-bar" id="tabBar">
+            <!-- 由 JS 动态渲染 -->
         </div>
 
         <!-- 右侧内容区 -->
@@ -81,6 +74,31 @@
                 <div id="backupList" class="backup-list">
                     <div class="empty-hint">请先选择游戏和存档位</div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 待办面板 -->
+        <div class="panel" id="panel-todo">
+            <div class="todo-toolbar">
+                <input type="text" id="todoSearch" class="todo-search-input" placeholder="🔍 搜索待办...">
+                <select id="todoFilterStatus" class="todo-filter-select">
+                    <option value="all">全部</option>
+                    <option value="active">待完成</option>
+                    <option value="done">已完成</option>
+                </select>
+                <select id="todoFilterPriority" class="todo-filter-select">
+                    <option value="-1">全部优先级</option>
+                    <option value="2">高</option>
+                    <option value="1">中</option>
+                    <option value="0">低</option>
+                </select>
+            </div>
+            <div class="todo-stats" id="todoStats"></div>
+            <div class="todo-list" id="todoList">
+                <div class="empty-hint">暂无待办，在下方添加</div>
+            </div>
+            <div class="todo-add-bar">
+                <input type="text" id="todoAddInput" placeholder="+ 添加待办，回车创建..." class="todo-add-input">
             </div>
         </div>
 

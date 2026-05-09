@@ -10,10 +10,6 @@ let currentHashesBySlot = {};  // { "gameId:slotId": { "save.dat": "abc", "confi
 
 // ==================== DOM 引用 ====================
 
-// 全局 Tab
-const tabs = document.querySelectorAll('.tab');
-const panels = document.querySelectorAll('.panel');
-
 // 时间转换
 const timezoneSets = document.getElementById('timezoneSets');
 const addTimezoneBtn = document.getElementById('addTimezoneBtn');
@@ -44,16 +40,85 @@ const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 
-// ==================== 全局 Tab 切换 ====================
-tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        panels.forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-        if (tab.dataset.tab === 'backup') refreshAll();
+// ==================== Tab 栏管理 ====================
+const TAB_DEFS = {
+    convert: { icon: '&#9202;', label: '时间转换' },
+    backup:  { icon: '&#128190;', label: '存档管理' },
+    todo:    { icon: '&#128203;', label: '待办工具' },
+};
+const DEFAULT_TAB_ORDER = ['convert', 'backup', 'todo'];
+let currentTab = 'convert';
+
+function renderTabBar() {
+    const tabBar = document.getElementById('tabBar');
+    let order = currentConfig.tab_order && currentConfig.tab_order.length
+        ? [...currentConfig.tab_order] : [...DEFAULT_TAB_ORDER];
+    // 确保所有 Tab 都在 order 中
+    DEFAULT_TAB_ORDER.forEach(id => { if (!order.includes(id)) order.push(id); });
+
+    tabBar.innerHTML = order.map(id => {
+        const def = TAB_DEFS[id];
+        if (!def) return '';
+        const active = id === currentTab ? ' active' : '';
+        return `<button class="tab${active}" data-tab="${id}" draggable="true">
+            <span class="tab-icon">${def.icon}</span>
+            <span class="tab-label">${def.label}</span>
+        </button>`;
+    }).join('');
+
+    bindTabEvents();
+}
+
+function bindTabEvents() {
+    const tabs = document.querySelectorAll('#tabBar .tab');
+    let dragSrcIdx = -1;
+
+    tabs.forEach((tab, idx) => {
+        tab.addEventListener('dragstart', () => {
+            dragSrcIdx = idx;
+            setTimeout(() => tab.style.opacity = '0.5', 0);
+        });
+        tab.addEventListener('dragend', () => {
+            tab.style.opacity = '1';
+            document.querySelectorAll('#tabBar .tab').forEach(t => t.style.borderTop = '');
+        });
+        tab.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.querySelectorAll('#tabBar .tab').forEach(t => t.style.borderTop = '');
+            if (idx > dragSrcIdx) tab.style.borderTop = '2px solid var(--accent)';
+        });
+        tab.addEventListener('dragleave', () => { tab.style.borderTop = ''; });
+        tab.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (dragSrcIdx === idx) return;
+            let order = currentConfig.tab_order && currentConfig.tab_order.length
+                ? [...currentConfig.tab_order] : [...DEFAULT_TAB_ORDER];
+            DEFAULT_TAB_ORDER.forEach(id => { if (!order.includes(id)) order.push(id); });
+            const [moved] = order.splice(dragSrcIdx, 1);
+            order.splice(idx, 0, moved);
+            currentConfig.tab_order = order;
+            saveConfigToBackend();
+            renderTabBar();
+            switchTab(currentTab);
+        });
+        tab.addEventListener('click', () => {
+            const tabId = tab.dataset.tab;
+            if (tabId !== currentTab) switchTab(tabId);
+        });
     });
-});
+}
+
+function switchTab(tabId) {
+    currentTab = tabId;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    const tab = document.querySelector(`.tab[data-tab="${tabId}"]`);
+    if (tab) tab.classList.add('active');
+    const panel = document.getElementById('panel-' + tabId);
+    if (panel) panel.classList.add('active');
+    if (tabId === 'backup') refreshAll();
+    if (tabId === 'todo') renderTodos();
+}
 
 // ==================== 时间转换 ====================
 
@@ -301,6 +366,12 @@ async function loadConfig() {
     currentConfig = await invoke('get_config');
     applyTheme(currentConfig.theme || 'system');
     updateSettingsDisplay();
+    // 初始化 Tab
+    const order = currentConfig.tab_order && currentConfig.tab_order.length
+        ? currentConfig.tab_order : DEFAULT_TAB_ORDER;
+    currentTab = order[0];
+    renderTabBar();
+    switchTab(currentTab);
     renderTimezoneSets();
     await initTimezoneDefaults();
     if (currentConfig.games.length > 0) {
@@ -1200,6 +1271,11 @@ function refreshAll() {
         refreshCurrentHashes();
         refreshBackupList();
     }
+}
+
+// ==================== 待办工具 ====================
+function renderTodos() {
+    // Task 5 实现
 }
 
 // ==================== 启动 ====================
