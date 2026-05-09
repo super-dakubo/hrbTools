@@ -1274,8 +1274,295 @@ function refreshAll() {
 }
 
 // ==================== 待办工具 ====================
+const todoAddInput = document.getElementById('todoAddInput');
+const todoList = document.getElementById('todoList');
+const todoSearch = document.getElementById('todoSearch');
+const todoFilterStatus = document.getElementById('todoFilterStatus');
+const todoFilterPriority = document.getElementById('todoFilterPriority');
+const todoStats = document.getElementById('todoStats');
+
 function renderTodos() {
-    // Task 5 实现
+    const items = currentConfig.todos || [];
+    const keyword = (todoSearch.value || '').toLowerCase();
+    const statusFilter = todoFilterStatus.value;
+    const priorityFilter = parseInt(todoFilterPriority.value, 10);
+
+    // 搜索 + 筛选
+    let filtered = items.filter(t => {
+        if (statusFilter === 'active' && t.done) return false;
+        if (statusFilter === 'done' && !t.done) return false;
+        if (priorityFilter >= 0 && t.priority !== priorityFilter) return false;
+        if (keyword && !t.text.toLowerCase().includes(keyword) &&
+            !t.tags.some(tag => tag.toLowerCase().includes(keyword))) return false;
+        return true;
+    });
+
+    // 排序: 未完成优先 → 按优先级 → 手动排序
+    const sorted = [...filtered].sort((a, b) => {
+        if (a.done !== b.done) return a.done - b.done;
+        if (a.priority !== b.priority) return b.priority - a.priority;
+        return a.sort_order - b.sort_order;
+    });
+
+    // 统计
+    const total = items.length;
+    const active = items.filter(t => !t.done).length;
+    const doneCount = total - active;
+    todoStats.innerHTML = '<span class="' + (statusFilter === 'all' ? 'active' : '') + '" data-filter="all">全部 <span class="count">' + total + '</span></span>'
+        + '<span class="' + (statusFilter === 'active' ? 'active' : '') + '" data-filter="active">待完成 <span class="count">' + active + '</span></span>'
+        + '<span class="' + (statusFilter === 'done' ? 'active' : '') + '" data-filter="done">已完成 <span class="count">' + doneCount + '</span></span>';
+
+    // 绑定统计点击切换
+    todoStats.querySelectorAll('span').forEach(el => {
+        el.addEventListener('click', function() {
+            todoFilterStatus.value = this.dataset.filter;
+            renderTodos();
+        });
+    });
+
+    // 渲染列表
+    if (sorted.length === 0) {
+        todoList.innerHTML = '<div class="empty-hint">暂无待办，在下方添加</div>';
+        return;
+    }
+
+    todoList.innerHTML = sorted.map(t => {
+        const priClass = t.priority === 2 ? 'high' : t.priority === 1 ? 'medium' : 'low';
+        const priLabel = t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低';
+        const dueHtml = t.due_date ? '<span class="todo-due' + (isOverdue(t.due_date) && !t.done ? ' overdue' : '') + '">📅 ' + t.due_date.slice(5) + '</span>' : '';
+        const tagsHtml = t.tags.map(tag => '<span class="todo-tag">' + escapeHtml(tag) + '</span>').join('');
+        return '<div class="todo-item' + (t.done ? ' done' : '') + '" data-id="' + escapeHtml(t.id) + '">'
+            + '<span class="todo-drag-handle">⠿</span>'
+            + '<span class="todo-check" data-action="toggle-todo">' + (t.done ? '✓' : '') + '</span>'
+            + (t.priority > 0 ? '<span class="todo-priority ' + priClass + '">' + priLabel + '</span>' : '')
+            + '<span class="todo-text" data-action="edit-todo">' + escapeHtml(t.text) + '</span>'
+            + dueHtml
+            + (tagsHtml ? '<span class="todo-tags">' + tagsHtml + '</span>' : '')
+            + '<button class="todo-delete-btn" data-action="delete-todo" title="删除">×</button>'
+            + '</div>';
+    }).join('');
+
+    bindTodoEvents();
+}
+
+function isOverdue(dateStr) {
+    if (!dateStr) return false;
+    var d = new Date(dateStr + 'T23:59:59');
+    return d < new Date();
+}
+
+function bindTodoEvents() {
+    todoList.querySelectorAll('[data-action="toggle-todo"]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = this.closest('.todo-item').dataset.id;
+            toggleTodoDone(id);
+        });
+    });
+
+    todoList.querySelectorAll('[data-action="edit-todo"]').forEach(function(el) {
+        el.addEventListener('click', function() {
+            var id = this.closest('.todo-item').dataset.id;
+            openTodoEditModal(id);
+        });
+    });
+
+    todoList.querySelectorAll('[data-action="delete-todo"]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = this.closest('.todo-item').dataset.id;
+            if (confirm('确定删除此待办？')) deleteTodo(id);
+        });
+    });
+}
+
+function toggleTodoDone(id) {
+    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+    if (!todo) return;
+    todo.done = !todo.done;
+
+    // 重复任务完成时自动创建下一周期
+    if (todo.done && todo.repeat) {
+        var newTodo = createNextRepeat(todo);
+        if (newTodo) currentConfig.todos.push(newTodo);
+    }
+
+    saveConfigToBackend();
+    renderTodos();
+}
+
+function deleteTodo(id) {
+    currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
+    saveConfigToBackend();
+    renderTodos();
+}
+
+function createNextRepeat(todo) {
+    var now = new Date();
+    var nextDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (todo.repeat === 'daily') nextDate.setDate(nextDate.getDate() + 1);
+    else if (todo.repeat === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+    else if (todo.repeat === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+    else return null;
+
+    var newTodo = JSON.parse(JSON.stringify(todo));
+    newTodo.id = crypto.randomUUID();
+    newTodo.done = false;
+    newTodo.created_at = new Date().toISOString().slice(0, 16);
+    newTodo.last_notified = null;
+
+    // 推 reminder 和 due_date
+    if (newTodo.due_date && todo.repeat) {
+        var d = new Date(todo.due_date + 'T00:00:00');
+        if (todo.repeat === 'daily') d.setDate(d.getDate() + 1);
+        else if (todo.repeat === 'weekly') d.setDate(d.getDate() + 7);
+        else if (todo.repeat === 'monthly') d.setMonth(d.getMonth() + 1);
+        newTodo.due_date = d.toISOString().slice(0, 10);
+    }
+    if (newTodo.reminder && newTodo.reminder.datetime && todo.repeat) {
+        var r = new Date(newTodo.reminder.datetime);
+        if (todo.repeat === 'daily') r.setDate(r.getDate() + 1);
+        else if (todo.repeat === 'weekly') r.setDate(r.getDate() + 7);
+        else if (todo.repeat === 'monthly') r.setMonth(r.getMonth() + 1);
+        newTodo.reminder.datetime = r.toISOString().slice(0, 16);
+    }
+    return newTodo;
+}
+
+// 快捷添加
+todoAddInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        var text = todoAddInput.value.trim();
+        if (!text) return;
+        var todo = {
+            id: crypto.randomUUID(),
+            text: text,
+            done: false,
+            priority: 1,
+            due_date: null,
+            tags: [],
+            notes: '',
+            reminder: null,
+            repeat: null,
+            sort_order: currentConfig.todos.length,
+            created_at: new Date().toISOString().slice(0, 16),
+            last_notified: null,
+        };
+        currentConfig.todos.push(todo);
+        todoAddInput.value = '';
+        saveConfigToBackend();
+        renderTodos();
+        todoAddInput.focus();
+    }
+});
+
+// 搜索/筛选事件
+todoSearch.addEventListener('input', function() { renderTodos(); });
+todoFilterStatus.addEventListener('change', function() { renderTodos(); });
+todoFilterPriority.addEventListener('change', function() { renderTodos(); });
+
+// 编辑弹窗
+function openTodoEditModal(id) {
+    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+    if (!todo) return;
+
+    var oldEl = document.querySelector('.todo-edit-overlay');
+    if (oldEl) oldEl.remove();
+
+    var priorityLabels = ['低', '中', '高'];
+    var priorityHtml = '';
+    for (var i = 0; i < 3; i++) {
+        priorityHtml += '<button class="' + (todo.priority === i ? 'active' : '') + '" data-value="' + i + '">' + priorityLabels[i] + '</button>';
+    }
+
+    var repeatValues = [null, 'daily', 'weekly', 'monthly'];
+    var repeatLabels = ['不重复', '每天', '每周', '每月'];
+    var repeatOpts = '';
+    for (var i = 0; i < repeatValues.length; i++) {
+        repeatOpts += '<option value="' + (repeatValues[i] || '') + '" ' + (todo.repeat === repeatValues[i] ? 'selected' : '') + '>' + repeatLabels[i] + '</option>';
+    }
+
+    var overlay = document.createElement('div');
+    overlay.className = 'todo-edit-overlay';
+    overlay.innerHTML = '<div class="todo-edit-modal">'
+        + '<div class="todo-edit-title">编辑待办</div>'
+
+        + '<div class="todo-edit-field">'
+            + '<label>内容</label>'
+            + '<input type="text" id="editText" value="' + escapeHtml(todo.text) + '">'
+        + '</div>'
+
+        + '<div class="todo-edit-row">'
+            + '<div class="todo-edit-field">'
+                + '<label>优先级</label>'
+                + '<div class="todo-priority-picker" id="editPriority">' + priorityHtml + '</div>'
+            + '</div>'
+            + '<div class="todo-edit-field">'
+                + '<label>到期日</label>'
+                + '<input type="date" id="editDueDate" value="' + (todo.due_date || '') + '">'
+            + '</div>'
+        + '</div>'
+
+        + '<div class="todo-edit-field">'
+            + '<label>标签（逗号分隔）</label>'
+            + '<input type="text" id="editTags" value="' + escapeHtml((todo.tags || []).join(', ')) + '">'
+        + '</div>'
+
+        + '<div class="todo-edit-field">'
+            + '<label>备注</label>'
+            + '<textarea id="editNotes">' + escapeHtml(todo.notes || '') + '</textarea>'
+        + '</div>'
+
+        + '<div class="todo-edit-row">'
+            + '<div class="todo-edit-field">'
+                + '<label>提醒时间</label>'
+                + '<input type="datetime-local" id="editReminder" value="' + (todo.reminder ? todo.reminder.datetime : '') + '">'
+            + '</div>'
+            + '<div class="todo-edit-field">'
+                + '<label>重复</label>'
+                + '<select id="editRepeat">' + repeatOpts + '</select>'
+            + '</div>'
+        + '</div>'
+
+        + '<div class="todo-edit-actions">'
+            + '<button class="btn-small" id="editCancelBtn">取消</button>'
+            + '<button id="editSaveBtn">保存</button>'
+        + '</div>'
+    + '</div>';
+
+    document.querySelector('.container').appendChild(overlay);
+
+    // 优先级切换
+    overlay.querySelectorAll('.todo-priority-picker button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            overlay.querySelectorAll('.todo-priority-picker button').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+        });
+    });
+
+    overlay.querySelector('#editCancelBtn').addEventListener('click', function() { overlay.remove(); });
+
+    overlay.querySelector('#editSaveBtn').addEventListener('click', function() {
+        var newText = overlay.querySelector('#editText').value.trim();
+        if (!newText) { alert('内容不能为空'); return; }
+        todo.text = newText;
+        var activePri = overlay.querySelector('.todo-priority-picker .active');
+        todo.priority = activePri ? parseInt(activePri.dataset.value, 10) : 1;
+        todo.due_date = overlay.querySelector('#editDueDate').value || null;
+        todo.tags = overlay.querySelector('#editTags').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        todo.notes = overlay.querySelector('#editNotes').value;
+        var reminderVal = overlay.querySelector('#editReminder').value;
+        if (reminderVal) {
+            todo.reminder = { datetime: reminderVal, sound: true };
+        } else {
+            todo.reminder = null;
+        }
+        todo.repeat = overlay.querySelector('#editRepeat').value || null;
+        overlay.remove();
+        saveConfigToBackend();
+        renderTodos();
+    });
 }
 
 // ==================== 启动 ====================
