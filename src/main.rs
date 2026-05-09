@@ -203,6 +203,8 @@ struct TodoItem {
     #[serde(default)]
     priority: i32,
     #[serde(default)]
+    paused: bool,
+    #[serde(default)]
     due_date: Option<String>,
     #[serde(default)]
     tags: Vec<String>,
@@ -1309,6 +1311,7 @@ fn main() {
 
                     for todo in config.todos.iter_mut() {
                         if todo.done { continue; }
+                        if todo.paused { continue; }
                         let reminder = match &todo.reminder {
                             Some(r) => r,
                             None => continue,
