@@ -1545,7 +1545,7 @@ function toggleTodoDone(id) {
 }
 
 function deleteTodo(id) {
-    currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
+    currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id && t.parent_id !== id; });
     saveConfigToBackend();
     renderTodos();
 }
