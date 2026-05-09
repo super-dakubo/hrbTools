@@ -39,6 +39,8 @@ const settingsBackupRoot = document.getElementById('settingsBackupRoot');
 const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
+const autoStartToggle = document.getElementById('autoStartToggle');
+const trayToggle = document.getElementById('trayToggle');
 
 // ==================== Tab 栏管理 ====================
 const TAB_DEFS = {
@@ -1170,6 +1172,20 @@ themeToggleBtn.addEventListener('click', () => {
     saveConfigToBackend();
 });
 
+// 开机自启开关
+autoStartToggle.addEventListener('click', async function() {
+    currentConfig.auto_start = !currentConfig.auto_start;
+    await saveConfigToBackend();
+    updateSettingsDisplay();
+});
+
+// 托盘开关
+trayToggle.addEventListener('click', async function() {
+    currentConfig.minimize_to_tray = !currentConfig.minimize_to_tray;
+    await saveConfigToBackend();
+    updateSettingsDisplay();
+});
+
 function applyTheme(theme) {
     const isLight = theme === 'system' ? !systemIsDark : theme === 'light';
     if (isLight) {
@@ -1205,6 +1221,13 @@ function updateSettingsDisplay() {
     } else {
         settingsBackupRoot.textContent = '未设置';
         settingsBackupRoot.classList.remove('has-value');
+    }
+    // 开机自启和托盘开关状态
+    if (autoStartToggle) {
+        autoStartToggle.textContent = currentConfig.auto_start ? '开启' : '关闭';
+    }
+    if (trayToggle) {
+        trayToggle.textContent = currentConfig.minimize_to_tray ? '开启' : '关闭';
     }
 }
 
