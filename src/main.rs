@@ -225,6 +225,8 @@ struct TodoItem {
     created_at: String,
     #[serde(default)]
     last_notified: Option<i64>,
+    #[serde(default)]
+    parent_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
