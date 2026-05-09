@@ -11,6 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - `backup-operations` — 备份系统操作规范
 > - `tauri-command-pattern` — 添加新 Tauri 命令
 > - `id-based-entities` — 添加可改名实体时用 ID 关联
+> - `simplify` — 审查代码质量、去重、效率优化
+>
+> **全局 superpowers skill**（`.claude/plugins/`）也均可用：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging` 等，按需使用 Skill 工具调用。
 >
 > **权限配置** — 本项目权限采用分层设计：通用 git/cargo 命令在全局配置中授权，项目级 `.claude/settings.local.json` 仅放 Tauri 特有命令（`cargo tauri dev/build`）和远端推送。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。
 
@@ -29,10 +32,20 @@ Tauri 2.0 桌面应用（**仅 Windows**），**无边框窗口** + 自定义标
 
 全部 Rust 代码在单个文件中，用 `// ====================` 分隔区块。配置存于 `%APPDATA%/com.hrbTools.app/config.json`。
 
+### 备份存储结构
+
+存档备份目录结构为 `{backup_root}/{game_id}/{slot_id}/{file_hash}_{file_name}`。各层含义：
+- `game_id` / `slot_id` — UUID，由 `crypto.randomUUID()` 生成，不可变
+- `file_hash` — 文件 MD5 前 16 位，用于去重（同名同哈希的备份只存一份）
+- 每层目录下有 `meta.json` 存储元数据
+
+操作备份文件时不要手动拼路径，通过 Tauri 命令交互。
+
 ### 前端
 
 - **无 npm/打包器**——纯原生 HTML/CSS/JS，禁止 `import` 语句和 `<script type="module">`
 - 三个功能面板（时间转换、存档管理、待办工具）共用 `main.js`，但**互不共享状态，修改一个绝不能动另一个的代码**
+- main.js 中三个面板用 `// ====================` 分隔：时间转换（约 L60-L280）、存档管理（约 L280-L1300）、待办工具（约 L1370-EOF）
 
 ### 约束
 
