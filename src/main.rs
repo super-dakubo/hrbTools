@@ -2,12 +2,66 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use chrono::{NaiveDateTime, DateTime, Utc, TimeZone};
-use chrono_tz::Tz;
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 use md5::{Md5, Digest};
+
+// ==================== 时区工具 ====================
+
+/// 解析时区名称为固定偏移（含 DST 支持）
+fn resolve_timezone(tz_name: &str) -> Option<chrono::FixedOffset> {
+    use chrono::FixedOffset;
+    match tz_name {
+        "Asia/Shanghai"     => Some(FixedOffset::east_opt(8 * 3600)?),
+        "Asia/Kolkata"      => Some(FixedOffset::east_opt(5 * 3600 + 1800)?),
+        "Asia/Tokyo"        => Some(FixedOffset::east_opt(9 * 3600)?),
+        "UTC"               => Some(FixedOffset::east_opt(0)?),
+        "Europe/London"     => {
+            let now = chrono::Utc::now().naive_utc().date();
+            let year = now.year();
+            let bst_start = last_sunday_of_month(year, 3);
+            let bst_end = last_sunday_of_month(year, 10);
+            let offset = if now >= bst_start && now < bst_end { 1 } else { 0 };
+            Some(FixedOffset::east_opt(offset * 3600)?)
+        }
+        "America/New_York"  => {
+            let now = chrono::Utc::now().naive_utc().date();
+            let year = now.year();
+            let edt_start = nth_sunday_of_month(year, 3, 2);
+            let edt_end = nth_sunday_of_month(year, 11, 1);
+            let offset = if now >= edt_start && now < edt_end { -4 } else { -5 };
+            Some(FixedOffset::east_opt(offset * 3600)?)
+        }
+        "Australia/Sydney"  => {
+            let now = chrono::Utc::now().naive_utc().date();
+            let year = now.year();
+            let aedt_start = nth_sunday_of_month(year, 10, 1);
+            let aedt_end = nth_sunday_of_month(year + 1, 4, 1);
+            let offset = if now >= aedt_start && now < aedt_end { 11 } else { 10 };
+            Some(FixedOffset::east_opt(offset * 3600)?)
+        }
+        _ => None,
+    }
+}
+
+/// 计算某月第 N 个星期日（n 从 1 开始）
+fn nth_sunday_of_month(year: i32, month: u32, n: u32) -> chrono::NaiveDate {
+    let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let first_dow = first.weekday().num_days_from_sunday();
+    let day = 1 + if first_dow == 0 { 0 } else { 7 - first_dow } + (n - 1) * 7;
+    chrono::NaiveDate::from_ymd_opt(year, month, day).unwrap()
+}
+
+/// 计算某月最后一个星期日
+fn last_sunday_of_month(year: i32, month: u32) -> chrono::NaiveDate {
+    let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+    let last_day = chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).unwrap().pred_opt().unwrap();
+    let dow = last_day.weekday().num_days_from_sunday();
+    last_day.pred_opt().unwrap().checked_sub_days(chrono::Days::new(dow as u64)).unwrap()
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ConvertRequest {
@@ -105,9 +159,21 @@ struct AppConfig {
     timezone_sets: Vec<TimezoneSet>,
     #[serde(default = "default_theme")]
     theme: String,
+    #[serde(default = "default_tab_order")]
+    tab_order: Vec<String>,
+    #[serde(default)]
+    todos: Vec<TodoItem>,
+    #[serde(default)]
+    auto_start: bool,
+    #[serde(default)]
+    minimize_to_tray: bool,
 }
 
 fn default_theme() -> String { "system".to_string() }
+
+fn default_tab_order() -> Vec<String> {
+    vec!["convert".to_string(), "backup".to_string(), "todo".to_string()]
+}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -116,8 +182,50 @@ impl Default for AppConfig {
             games: vec![],
             timezone_sets: default_timezone_sets(),
             theme: default_theme(),
+            tab_order: default_tab_order(),
+            todos: vec![],
+            auto_start: false,
+            minimize_to_tray: true,
         }
     }
+}
+
+// ==================== 待办数据结构 ====================
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct TodoItem {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    done: bool,
+    #[serde(default)]
+    priority: i32,
+    #[serde(default)]
+    due_date: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    notes: String,
+    #[serde(default)]
+    reminder: Option<ReminderConfig>,
+    #[serde(default)]
+    repeat: Option<String>,
+    #[serde(default)]
+    sort_order: i32,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    last_notified: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ReminderConfig {
+    #[serde(default)]
+    datetime: String,
+    #[serde(default)]
+    sound: bool,
 }
 
 // ==================== 备份信息 ====================
@@ -205,9 +313,9 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
 #[tauri::command]
 fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
     // 解析时区
-    let tz: Tz = match request.timezone.parse() {
-        Ok(tz) => tz,
-        Err(_) => {
+    let tz = match resolve_timezone(&request.timezone) {
+        Some(tz) => tz,
+        None => {
             return ConvertResponse {
                 success: false,
                 timestamp: None,
@@ -240,7 +348,7 @@ fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
     };
 
     // 本地时区时间 → UTC → Unix 时间戳（毫秒）
-    let local_dt: DateTime<Tz> = tz.from_local_datetime(&naive_dt).unwrap();
+    let local_dt = tz.from_local_datetime(&naive_dt).unwrap();
     let utc_dt: DateTime<Utc> = local_dt.with_timezone(&Utc);
     let timestamp = utc_dt.timestamp_millis();
 
@@ -253,9 +361,9 @@ fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
 
 #[tauri::command]
 fn convert_to_datetime(request: TimestampRequest) -> DatetimeResponse {
-    let tz: Tz = match request.timezone.parse() {
-        Ok(tz) => tz,
-        Err(_) => {
+    let tz = match resolve_timezone(&request.timezone) {
+        Some(tz) => tz,
+        None => {
             return DatetimeResponse {
                 success: false,
                 datetime_str: None,
@@ -267,7 +375,7 @@ fn convert_to_datetime(request: TimestampRequest) -> DatetimeResponse {
     // 毫秒时间戳 → UTC → 本地时区时间字符串
     match Utc.timestamp_millis_opt(request.timestamp_ms) {
         chrono::LocalResult::Single(utc_dt) => {
-            let local_dt: DateTime<Tz> = utc_dt.with_timezone(&tz);
+            let local_dt = utc_dt.with_timezone(&tz);
             let datetime_str = local_dt.format("%Y-%m-%d %H:%M:%S").to_string();
             DatetimeResponse {
                 success: true,
