@@ -291,6 +291,7 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
                         }
                     }
                 }
+                set_auto_start(config.auto_start);  // 确保注册表与应用配置一致
                 config
             }
             Err(_) => AppConfig::default(),
@@ -309,6 +310,28 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
         let _ = fs::write(&path, json);
     }
 }
+
+// ==================== 开机自启 ====================
+
+fn set_auto_start(enabled: bool) {
+    let exe_path = std::env::current_exe().ok();
+    let app_name = "HRB Tools";
+
+    if enabled {
+        if let Some(path) = exe_path {
+            let path_str = path.to_string_lossy().to_string();
+            let _ = std::process::Command::new("reg")
+                .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", app_name, "/t", "REG_SZ", "/d", &path_str, "/f"])
+                .output();
+        }
+    } else {
+        let _ = std::process::Command::new("reg")
+            .args(["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", app_name, "/f"])
+            .output();
+    }
+}
+
+// ==================== 时区工具 ====================
 
 #[tauri::command]
 fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
@@ -398,6 +421,7 @@ fn get_config(app: tauri::AppHandle) -> AppConfig {
 
 #[tauri::command]
 fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
+    set_auto_start(config.auto_start);
     save_config(&app, &config);
     OpResult {
         success: true,
@@ -1202,8 +1226,9 @@ fn send_notification(_app: tauri::AppHandle, title: String, body: String) -> OpR
 #[tauri::command]
 fn window_minimize(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.minimize();
+        let _ = window.hide();
     }
+    // 托盘图标已在 setup 中创建
 }
 
 #[tauri::command]
@@ -1219,14 +1244,46 @@ fn window_toggle_maximize(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn window_close(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.close();
-    }
+    app.exit(0);
 }
 
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // 系统托盘
+            use tauri::tray::TrayIconBuilder;
+            use tauri::menu::{MenuBuilder, MenuItem};
+
+            let show = MenuItem::with_id(app, "show", "显示", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .tooltip("HRB Tools")
+                .menu(&menu)
+                .on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => { app.exit(0); }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
