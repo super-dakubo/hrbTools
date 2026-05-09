@@ -133,7 +133,7 @@ pub struct ReminderConfig {
 
 ### 4.1 依赖
 
-新增 `notify-rust = "4"` crate。
+新增 `notify-rust = "4"` crate。同时移除 `chrono-tz`（详见第 7 节）。
 
 ### 4.2 后台线程
 
@@ -157,7 +157,12 @@ pub struct ReminderConfig {
 
 ### 4.3 重复任务
 
-提醒触发时才自动推至下一周期（更新 `reminder.datetime` 和 `due_date`）。手动完成待办不触发重复创建，此功能后续实现。
+重复任务在两种情况下自动推至下一周期：
+
+1. **提醒触发时**（后台线程检测到提醒到期）— 更新 `reminder.datetime` 和 `due_date`
+2. **手动完成时**（前端点击完成，`done` 从 `false` → `true`）— 复制当前待办，重置 `done = false`，推至下一周期，原待办标记完成
+
+两种情况共用推期逻辑。
 
 ### 4.4 防重复
 
@@ -208,18 +213,53 @@ pub struct ReminderConfig {
 - `window_minimize` 命令改为 `window.hide()` + 创建托盘
 - `main.rs` 中创建 `TrayIconBuilder`，设置图标和菜单
 
-## 7. 修改文件清单
+## 7. 体积优化：移除 chrono-tz
+
+### 8.1 问题
+
+`chrono-tz` 内嵌完整 IANA 时区数据库，贡献约 2-3MB 静态数据。实际只用 7 个时区。
+
+### 8.2 替代方案
+
+移除 `chrono-tz`，改为纯 `chrono` 实现：
+
+```rust
+fn resolve_timezone(tz_name: &str) -> Option<chrono::FixedOffset> {
+    match tz_name {
+        "Asia/Shanghai"     => Some(FixedOffset::east_opt(8 * 3600)?),
+        "Asia/Kolkata"      => Some(FixedOffset::east_opt(5 * 3600 + 1800)?),
+        "Asia/Tokyo"        => Some(FixedOffset::east_opt(9 * 3600)?),
+        "UTC" | "Europe/London" => Some(FixedOffset::east_opt(0)?),  // London 用 DST 修正
+        "America/New_York"  => Some(dst_offset(tz_name)),            // DST 计算
+        "Australia/Sydney"  => Some(dst_offset(tz_name)),            // DST 计算
+        _ => None,
+    }
+}
+```
+
+### 8.3 DST 规则（3 个时区）
+
+| 时区 | 夏令时规则 | UTC 偏移(冬) | UTC 偏移(夏) |
+|------|-----------|-------------|-------------|
+| America/New_York | 3月第2周日~11月第1周日 | -5h | -4h |
+| Europe/London | 3月最后周日~10月最后周日 | +0h | +1h |
+| Australia/Sydney | 10月第1周日~4月第1周日 | +10h | +11h |
+
+DST 判断用纯 chrono 计算当前日期是否在夏令时区间内，全量实现约 30-50 行代码。
+
+### 8.4 节省
+
+| 指标 | 优化前 | 优化后 | 节省 |
+|------|--------|--------|------|
+| Release exe | ~9.7 MB | ~6-7 MB | ~30% |
+
+## 8. 修改文件清单
 
 | 文件 | 改动 |
 |------|------|
-| `Cargo.toml` | 新增 `notify-rust = "4"` |
-| `src/main.rs` | AppConfig 加字段、TodoItem 结构体、提醒后台线程、托盘、开机自启、send_notification 命令 |
+| `Cargo.toml` | 新增 `notify-rust = "4"`；移除 `chrono-tz` |
+| `src/main.rs` | AppConfig 加字段、TodoItem 结构体、提醒后台线程、移除 chrono-tz、托盘、开机自启、send_notification 命令 |
 | `src/index.html` | 新增 `#panel-todo`、Tab 栏改为动态渲染 |
 | `src/main.js` | 新增待办面板区块、Tab 动态渲染、拖拽排序 |
 | `src/styles.css` | 新增待办相关样式 |
 
-## 8. 未实现（后续考虑）
-
-- 体积优化（UPX、profile 调优等）
-- 重复任务完成时自动创建下一周期
-- 标签管理视图（按标签聚合）
