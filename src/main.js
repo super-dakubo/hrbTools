@@ -41,6 +41,7 @@ const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const autoStartToggle = document.getElementById('autoStartToggle');
 const trayToggle = document.getElementById('trayToggle');
+const reminderToggle = document.getElementById('reminderToggle');
 
 // ==================== Tab 栏管理 ====================
 const TAB_DEFS = {
@@ -62,51 +63,105 @@ function renderTabBar() {
         const def = TAB_DEFS[id];
         if (!def) return '';
         const active = id === currentTab ? ' active' : '';
-        return `<button class="tab${active}" data-tab="${id}" draggable="true">
+        return `<div class="tab${active}" data-tab="${id}" role="button" tabindex="0">
             <span class="tab-icon">${def.icon}</span>
             <span class="tab-label">${def.label}</span>
-        </button>`;
+        </div>`;
     }).join('');
 
     bindTabEvents();
 }
 
-function bindTabEvents() {
-    const tabs = document.querySelectorAll('#tabBar .tab');
-    let dragSrcIdx = -1;
+// ==================== Tab 拖拽（鼠标事件 + DOM 移动）====================
+let tabDragState = null;
+let tabWasDragged = false;
 
-    tabs.forEach((tab, idx) => {
-        tab.addEventListener('dragstart', () => {
-            dragSrcIdx = idx;
-            setTimeout(() => tab.style.opacity = '0.5', 0);
-        });
-        tab.addEventListener('dragend', () => {
-            tab.style.opacity = '1';
-            document.querySelectorAll('#tabBar .tab').forEach(t => t.style.borderTop = '');
-        });
-        tab.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            document.querySelectorAll('#tabBar .tab').forEach(t => t.style.borderTop = '');
-            if (idx > dragSrcIdx) tab.style.borderTop = '2px solid var(--accent)';
-        });
-        tab.addEventListener('dragleave', () => { tab.style.borderTop = ''; });
-        tab.addEventListener('drop', (e) => {
-            e.preventDefault();
-            if (dragSrcIdx === idx) return;
+function getTabDropIndex(clientY) {
+    const tabs = document.querySelectorAll('#tabBar .tab');
+    for (let i = 0; i < tabs.length; i++) {
+        const rect = tabs[i].getBoundingClientRect();
+        if (clientY < rect.top + rect.height / 2) return i;
+    }
+    return document.querySelectorAll('#tabBar .tab').length - 1;
+}
+
+document.addEventListener('mousemove', function(e) {
+    if (!tabDragState) return;
+
+    if (!tabDragState.dragged && Math.abs(e.clientY - tabDragState.startY) > 5) {
+        tabDragState.dragged = true;
+        document.body.style.userSelect = 'none';
+        // 给被拖拽的 tab 加 visual feedback
+        if (tabDragState.tab) tabDragState.tab.classList.add('dragging');
+    }
+    if (!tabDragState.dragged) return;
+
+    const allTabs = document.querySelectorAll('#tabBar .tab');
+    const dropIdx = getTabDropIndex(e.clientY);
+    allTabs.forEach(function(t, i) {
+        t.classList.toggle('drop-indicator', i === dropIdx && i !== tabDragState.idx);
+    });
+});
+
+document.addEventListener('mouseup', function(e) {
+    if (!tabDragState) return;
+
+    document.body.style.userSelect = '';
+    document.querySelectorAll('#tabBar .tab').forEach(function(t) {
+        t.classList.remove('dragging', 'drop-indicator');
+    });
+
+    if (tabDragState.dragged) {
+        const dropIdx = getTabDropIndex(e.clientY);
+        if (dropIdx !== tabDragState.idx && dropIdx >= 0) {
+            // 移动 DOM 元素而不是全量重新渲染 —— 更流畅
+            const tabBar = document.getElementById('tabBar');
+            const allTabs = tabBar.querySelectorAll('.tab');
+            const srcTab = allTabs[tabDragState.idx];
+            const refTab = allTabs[dropIdx];
+            if (srcTab && refTab) {
+                if (dropIdx < tabDragState.idx) {
+                    tabBar.insertBefore(srcTab, refTab);
+                } else {
+                    tabBar.insertBefore(srcTab, refTab.nextSibling);
+                }
+            }
+
+            // 更新配置
             let order = currentConfig.tab_order && currentConfig.tab_order.length
                 ? [...currentConfig.tab_order] : [...DEFAULT_TAB_ORDER];
-            DEFAULT_TAB_ORDER.forEach(id => { if (!order.includes(id)) order.push(id); });
-            const [moved] = order.splice(dragSrcIdx, 1);
-            order.splice(idx, 0, moved);
+            DEFAULT_TAB_ORDER.forEach(function(id) { if (!order.includes(id)) order.push(id); });
+            var srcIdx = tabDragState.idx;
+            var [moved] = order.splice(srcIdx, 1);
+            order.splice(dropIdx, 0, moved);
             currentConfig.tab_order = order;
             saveConfigToBackend();
-            renderTabBar();
-            switchTab(currentTab);
-        });
-        tab.addEventListener('click', () => {
-            const tabId = tab.dataset.tab;
-            if (tabId !== currentTab) switchTab(tabId);
-        });
+        }
+        tabWasDragged = true;
+        setTimeout(function() { tabWasDragged = false; }, 200);
+    }
+
+    tabDragState = null;
+});
+
+function bindTabEvents() {
+    var tabBar = document.getElementById('tabBar');
+
+    // 事件委托：mousedown 记录拖拽目标
+    tabBar.addEventListener('mousedown', function(e) {
+        var tab = e.target.closest('.tab');
+        if (!tab || e.button !== 0) return;
+        var allTabs = tabBar.querySelectorAll('.tab');
+        var idx = Array.from(allTabs).indexOf(tab);
+        tabDragState = { tab: tab, idx: idx, startY: e.clientY };
+    });
+
+    // 事件委托：click 切换 Tab
+    tabBar.addEventListener('click', function(e) {
+        var tab = e.target.closest('.tab');
+        if (!tab || tabWasDragged) return;
+        var tabId = tab.dataset.tab;
+        if (tabId !== currentTab) switchTab(tabId);
     });
 }
 
@@ -1186,6 +1241,13 @@ trayToggle.addEventListener('click', async function() {
     updateSettingsDisplay();
 });
 
+// 启用提醒开关
+reminderToggle.addEventListener('click', async function() {
+    currentConfig.reminder_enabled = currentConfig.reminder_enabled !== false ? false : true;
+    await saveConfigToBackend();
+    updateSettingsDisplay();
+});
+
 function applyTheme(theme) {
     const isLight = theme === 'system' ? !systemIsDark : theme === 'light';
     if (isLight) {
@@ -1228,6 +1290,9 @@ function updateSettingsDisplay() {
     }
     if (trayToggle) {
         trayToggle.textContent = currentConfig.minimize_to_tray ? '开启' : '关闭';
+    }
+    if (reminderToggle) {
+        reminderToggle.textContent = currentConfig.reminder_enabled !== false ? '开启' : '关闭';
     }
 }
 
@@ -1297,14 +1362,55 @@ function refreshAll() {
 }
 
 // ==================== 待办工具 ====================
-const todoAddInput = document.getElementById('todoAddInput');
 const todoList = document.getElementById('todoList');
 const todoSearch = document.getElementById('todoSearch');
 const todoFilterStatus = document.getElementById('todoFilterStatus');
 const todoFilterPriority = document.getElementById('todoFilterPriority');
 const todoStats = document.getElementById('todoStats');
 
+function getReminderDisplay(todo) {
+    if (todo.done || !todo.reminder) return '';
+    if (!todo.reminder.datetime) return '';
+    var now = new Date();
+    var reminderTime = new Date(todo.reminder.datetime);
+    var diffMs = reminderTime - now;
+    if (isNaN(diffMs)) return '';
+    var diffMin = Math.floor(diffMs / 60000);
+
+    // 已过期（含刚好到期），返回已过期
+    if (diffMs <= 0) {
+        return '<span class="todo-reminder overdue">⏰ 已过期</span>';
+    }
+
+    var text = '';
+    if (diffMin < 1) text = '1分钟内';
+    else if (diffMin < 60) text = diffMin + '分钟后';
+    else if (diffMin < 1440) text = Math.floor(diffMin / 60) + '小时后';
+    else if (diffMin < 43200) text = Math.floor(diffMin / 1440) + '天后';
+    else text = Math.floor(diffMin / 43200) + '个月后';
+
+    var icon = todo.paused ? '⏸' : '⏰';
+    var cls = todo.paused ? 'todo-reminder paused' : 'todo-reminder';
+    return '<span class="' + cls + '" data-action="toggle-pause">' + icon + ' ' + text + '</span>';
+}
+
+function autoClearExpiredPaused() {
+    var changed = false;
+    (currentConfig.todos || []).forEach(function(t) {
+        if (t.done || !t.paused || !t.reminder || !t.reminder.datetime) return;
+        if (t.repeat) return; // 重复任务不自动清除暂停
+        var reminderTime = new Date(t.reminder.datetime);
+        if (isNaN(reminderTime)) return;
+        if (reminderTime <= new Date()) {
+            t.paused = false;
+            changed = true;
+        }
+    });
+    if (changed) saveConfigToBackend();
+}
+
 function renderTodos() {
+    autoClearExpiredPaused();
     const items = currentConfig.todos || [];
     const keyword = (todoSearch.value || '').toLowerCase();
     const statusFilter = todoFilterStatus.value;
@@ -1352,14 +1458,14 @@ function renderTodos() {
     todoList.innerHTML = sorted.map(t => {
         const priClass = t.priority === 2 ? 'high' : t.priority === 1 ? 'medium' : 'low';
         const priLabel = t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低';
-        const dueHtml = t.due_date ? '<span class="todo-due' + (isOverdue(t.due_date) && !t.done ? ' overdue' : '') + '">📅 ' + t.due_date.slice(5) + '</span>' : '';
+        const reminderHtml = getReminderDisplay(t);
         const tagsHtml = t.tags.map(tag => '<span class="todo-tag">' + escapeHtml(tag) + '</span>').join('');
         return '<div class="todo-item' + (t.done ? ' done' : '') + '" data-id="' + escapeHtml(t.id) + '">'
             + '<span class="todo-drag-handle">⠿</span>'
             + '<span class="todo-check" data-action="toggle-todo">' + (t.done ? '✓' : '') + '</span>'
             + (t.priority > 0 ? '<span class="todo-priority ' + priClass + '">' + priLabel + '</span>' : '')
             + '<span class="todo-text" data-action="edit-todo">' + escapeHtml(t.text) + '</span>'
-            + dueHtml
+            + reminderHtml
             + (tagsHtml ? '<span class="todo-tags">' + tagsHtml + '</span>' : '')
             + '<button class="todo-delete-btn" data-action="delete-todo" title="删除">×</button>'
             + '</div>';
@@ -1395,6 +1501,22 @@ function bindTodoEvents() {
             e.stopPropagation();
             var id = this.closest('.todo-item').dataset.id;
             if (confirm('确定删除此待办？')) deleteTodo(id);
+        });
+    });
+
+    todoList.querySelectorAll('[data-action="toggle-pause"]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = this.closest('.todo-item').dataset.id;
+            var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+            if (!todo || !todo.reminder) return;
+            // 已过期状态不可切换
+            var now = new Date();
+            var reminderTime = new Date(todo.reminder.datetime);
+            if (reminderTime <= now) return;
+            todo.paused = !todo.paused;
+            saveConfigToBackend();
+            renderTodos();
         });
     });
 }
@@ -1453,14 +1575,26 @@ function createNextRepeat(todo) {
     return newTodo;
 }
 
-// 快捷添加
-todoAddInput.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        var text = todoAddInput.value.trim();
-        if (!text) return;
-        var todo = {
-            id: crypto.randomUUID(),
-            text: text,
+// 添加待办按钮
+document.getElementById('todoAddBtn').addEventListener('click', function() {
+    openTodoEditModal(null);
+});
+
+// 搜索/筛选事件
+todoSearch.addEventListener('input', function() { renderTodos(); });
+todoFilterStatus.addEventListener('change', function() { renderTodos(); });
+todoFilterPriority.addEventListener('change', function() { renderTodos(); });
+
+// 编辑弹窗
+function openTodoEditModal(id) {
+    var isNew = id === null;
+    var todo = isNew ? null : currentConfig.todos.find(function(t) { return t.id === id; });
+    if (!todo && !isNew) return;
+
+    if (isNew) {
+        todo = {
+            id: null,
+            text: '',
             done: false,
             priority: 1,
             due_date: null,
@@ -1472,23 +1606,7 @@ todoAddInput.addEventListener('keydown', function(e) {
             created_at: new Date().toISOString().slice(0, 16),
             last_notified: null,
         };
-        currentConfig.todos.push(todo);
-        todoAddInput.value = '';
-        saveConfigToBackend();
-        renderTodos();
-        todoAddInput.focus();
     }
-});
-
-// 搜索/筛选事件
-todoSearch.addEventListener('input', function() { renderTodos(); });
-todoFilterStatus.addEventListener('change', function() { renderTodos(); });
-todoFilterPriority.addEventListener('change', function() { renderTodos(); });
-
-// 编辑弹窗
-function openTodoEditModal(id) {
-    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
-    if (!todo) return;
 
     var oldEl = document.querySelector('.todo-edit-overlay');
     if (oldEl) oldEl.remove();
@@ -1509,22 +1627,21 @@ function openTodoEditModal(id) {
     var overlay = document.createElement('div');
     overlay.className = 'todo-edit-overlay';
     overlay.innerHTML = '<div class="todo-edit-modal">'
-        + '<div class="todo-edit-title">编辑待办</div>'
+        + '<div class="todo-edit-title">' + (isNew ? '新建待办' : '编辑待办') + '</div>'
 
         + '<div class="todo-edit-field">'
             + '<label>内容</label>'
             + '<input type="text" id="editText" value="' + escapeHtml(todo.text) + '">'
         + '</div>'
 
-        + '<div class="todo-edit-row">'
-            + '<div class="todo-edit-field">'
-                + '<label>优先级</label>'
-                + '<div class="todo-priority-picker" id="editPriority">' + priorityHtml + '</div>'
-            + '</div>'
-            + '<div class="todo-edit-field">'
-                + '<label>到期日</label>'
-                + '<input type="date" id="editDueDate" value="' + (todo.due_date || '') + '">'
-            + '</div>'
+        + '<div class="todo-edit-field">'
+            + '<label>优先级</label>'
+            + '<div class="todo-priority-picker" id="editPriority">' + priorityHtml + '</div>'
+        + '</div>'
+
+        + '<div class="todo-edit-field">'
+            + '<label>📅 到期日</label>'
+            + '<input type="date" id="editDueDate" value="' + (todo.due_date || '') + '">'
         + '</div>'
 
         + '<div class="todo-edit-field">'
@@ -1537,15 +1654,14 @@ function openTodoEditModal(id) {
             + '<textarea id="editNotes">' + escapeHtml(todo.notes || '') + '</textarea>'
         + '</div>'
 
-        + '<div class="todo-edit-row">'
-            + '<div class="todo-edit-field">'
-                + '<label>提醒时间</label>'
-                + '<input type="datetime-local" id="editReminder" value="' + (todo.reminder ? todo.reminder.datetime : '') + '">'
-            + '</div>'
-            + '<div class="todo-edit-field">'
-                + '<label>重复</label>'
-                + '<select id="editRepeat">' + repeatOpts + '</select>'
-            + '</div>'
+        + '<div class="todo-edit-field">'
+            + '<label>⏰ 提醒时间</label>'
+            + '<input type="datetime-local" id="editReminder" value="' + (todo.reminder ? todo.reminder.datetime : '') + '">'
+        + '</div>'
+
+        + '<div class="todo-edit-field">'
+            + '<label>重复</label>'
+            + '<select id="editRepeat">' + repeatOpts + '</select>'
         + '</div>'
 
         + '<div class="todo-edit-actions">'
@@ -1569,7 +1685,27 @@ function openTodoEditModal(id) {
     overlay.querySelector('#editSaveBtn').addEventListener('click', function() {
         var newText = overlay.querySelector('#editText').value.trim();
         if (!newText) { alert('内容不能为空'); return; }
-        todo.text = newText;
+
+        if (isNew) {
+            todo = {
+                id: crypto.randomUUID(),
+                text: newText,
+                done: false,
+                priority: 1,
+                due_date: null,
+                tags: [],
+                notes: '',
+                reminder: null,
+                repeat: null,
+                sort_order: currentConfig.todos.length,
+                created_at: new Date().toISOString().slice(0, 16),
+                last_notified: null,
+                paused: false,
+            };
+            currentConfig.todos.push(todo);
+        } else {
+            todo.text = newText;
+        }
         var activePri = overlay.querySelector('.todo-priority-picker .active');
         todo.priority = activePri ? parseInt(activePri.dataset.value, 10) : 1;
         todo.due_date = overlay.querySelector('#editDueDate').value || null;

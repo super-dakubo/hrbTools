@@ -167,9 +167,13 @@ struct AppConfig {
     auto_start: bool,
     #[serde(default)]
     minimize_to_tray: bool,
+    #[serde(default = "default_true")]
+    reminder_enabled: bool,
 }
 
 fn default_theme() -> String { "system".to_string() }
+
+fn default_true() -> bool { true }
 
 fn default_tab_order() -> Vec<String> {
     vec!["convert".to_string(), "backup".to_string(), "todo".to_string()]
@@ -186,6 +190,7 @@ impl Default for AppConfig {
             todos: vec![],
             auto_start: false,
             minimize_to_tray: true,
+            reminder_enabled: true,
         }
     }
 }
@@ -1308,6 +1313,7 @@ fn main() {
                     };
                     let now = chrono::Utc::now().timestamp_millis();
                     let mut changed = false;
+                    if !config.reminder_enabled { continue; }
 
                     for todo in config.todos.iter_mut() {
                         if todo.done { continue; }
