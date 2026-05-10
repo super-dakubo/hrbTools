@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(cargo *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(mkdir *)",
+      "WebSearch"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(git push --force)",
+      "Bash(git reset --hard)",
+      "Bash(curl * | sh)",
+      "Bash(sudo *)",
+      "Bash(npm install -g *)",
+      "Bash(chmod 777 *)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
