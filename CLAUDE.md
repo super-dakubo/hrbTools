@@ -12,12 +12,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - `backup-operations` — 备份系统操作规范
 > - `tauri-command-pattern` — 添加新 Tauri 命令
 > - `id-based-entities` — 添加可改名实体时用 ID 关联
+> - `sync-profile` — 个人侧写/知识种子包，init/pull/refresh 操作
 >
 > **全局 superpowers skill**（`.claude/plugins/`）也均可用：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging` 等，按需使用 Skill 工具调用。
 >
-> **权限配置** — 本项目权限采用分层设计：通用 git/cargo 命令在全局配置中授权，项目级 `.claude/settings.local.json` 仅放 Tauri 特有命令（`cargo tauri dev/build`）和远端推送。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。
+> **权限配置** — 本项目权限采用分层设计：全局 `Bash(cargo *)` 覆盖所有 cargo 子命令（build/test/tauri dev/tauri build/check），项目级 `.claude/settings.local.json` 仅放 `git push` 和 `taskkill`。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。复合命令（`&&` 串联）按完整字符串匹配，建议分步执行。
 >
 > **`cargo tauri dev` 无 hot-reload** — 修改前端文件（index.html / main.js / styles.css）后需重启或按 Ctrl+R 刷新 WebView。Rust 端修改会自动重新编译。
+> **启动加载遮罩** — 应用启动时有 loading spinner 遮罩，`loadConfig()` 完成后自动淡出。这是有意保留的 UX 设计（Release 模式 `reg.exe` 冷启动 ~3.3s），不要移除。
 
 ## 常用命令
 
@@ -25,6 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cargo tauri build` – 生产构建
 - `cargo build` – 仅编译 Rust 后端
 - `cargo test` – 运行测试（当前仅验证编译）
+- `taskkill /im tauri_dev.exe /f` – 强制终止 dev 进程（开发时常用）
 
 ## 架构概述
 
@@ -39,7 +42,7 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 | [src/index.html](src/index.html) | HTML 骨架，4 面板 DOM（时间转换/存档管理/待办/日志）+ 设置弹窗 |
 | [src/styles.css](src/styles.css) | CSS 变量主题系统（暗色/亮色）+ 全部组件样式 |
 | [src/main.js](src/main.js) | 全部前端逻辑，`// ===` 分隔为 Tab/时间转换/存档/待办/日志 五大区块 |
-| [src/main.rs](src/main.rs) | 全部 Rust 逻辑，27 个 Tauri 命令，6 个数据结构 |
+| [src/main.rs](src/main.rs) | 全部 Rust 逻辑，27 个 Tauri 命令，12 个数据结构 |
 
 ### 前端（src/main.js）分区
 
