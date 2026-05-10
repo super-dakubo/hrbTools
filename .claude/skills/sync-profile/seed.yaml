@@ -1,0 +1,19 @@
+# sync-profile 种子包版本
+version: 1
+created: 2026-05-10
+updated: 2026-05-10
+changelog:
+  - version: 1
+    what: "初始版本"
+    files:
+      - "SKILL.md"
+      - "profile/personal.md"
+      - "profile/coding.md"
+      - "profile/workflow.md"
+      - "config/global-settings.json"
+      - "config/permissions.md"
+      - "knowledge/common/debugging.md"
+      - "knowledge/rust/tauri-pitfalls.md"
+      - "scaffolds/rust-tauri/*"
+      - "scaffolds/generic/*"
+      - "scripts/*"
