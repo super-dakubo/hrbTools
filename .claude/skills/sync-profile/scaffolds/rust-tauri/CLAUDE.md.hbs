@@ -1,0 +1,29 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **代码开发前必须阅读 [docs/LESSONS.md](./docs/LESSONS.md)** — 踩坑记录和硬性约束。
+> **UI/样式修改前阅读 [docs/design-system.md](./docs/design-system.md)**（如存在）。
+> **处理特定功能时阅读 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节**（如存在）。
+>
+> ## 个人侧写
+>
+> 此项目已接入 sync-profile。你的个人侧写和协作规则来自：
+> - `.claude/skills/sync-profile/profile/` — 编码规范、工作习惯
+> - 全局 `~/.claude/settings.json` — 权限配置
+> - `docs/LESSONS.md` — 跨项目经验沉淀
+
+## 常用命令
+
+- `cargo tauri dev` – 启动 Tauri 开发
+- `cargo tauri build` – 生产构建
+- `cargo build` – 仅编译 Rust 后端
+- `cargo test` – 运行测试
+- `taskkill /im tauri_dev.exe /f` – 强制终止 dev 进程
+
+## 架构概述
+
+<!-- 项目初始化后由 AI 填充架构概要，包括：-->
+<!-- - 技术栈和框架版本 -->
+<!-- - 源文件一览和各自职责 -->
+<!-- - 核心数据流 -->
