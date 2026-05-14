@@ -1460,15 +1460,18 @@ fn main() {
                                         let day_mode = reminder.day_mode.as_str();
                                         match day_mode {
                                             "last" => {
-                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
+                                                let last = last_day_of_month(next.year(), next.month());
                                                 next_dt = chrono::NaiveDateTime::new(last, next_dt.time());
                                             }
                                             "second_last" => {
-                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
+                                                let last = last_day_of_month(next.year(), next.month());
                                                 next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(1), next_dt.time());
                                             }
                                             "third_last" => {
-                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
+                                                let last = last_day_of_month(next.year(), next.month());
                                                 next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(2), next_dt.time());
                                             }
                                             _ => { // "fixed" 或空字符串 = 向后兼容
