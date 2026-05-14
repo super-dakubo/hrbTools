@@ -1842,6 +1842,11 @@ function openTodoEditModal(id) {
         + '</div>'
 
         + '<div class="todo-edit-field">'
+            + '<label>重复</label>'
+            + '<select id="editRepeat">' + repeatOpts + '</select>'
+        + '</div>'
+
+        + '<div class="todo-edit-field">'
             + '<label>⏰ 提醒时间</label>'
             + '<div class="reminder-input-group">'
                 // 不重复
@@ -1876,11 +1881,6 @@ function openTodoEditModal(id) {
                     + '<input type="time" id="editReminderMonthlyTime">'
                 + '</span>'
             + '</div>'
-        + '</div>'
-
-        + '<div class="todo-edit-field">'
-            + '<label>重复</label>'
-            + '<select id="editRepeat">' + repeatOpts + '</select>'
         + '</div>'
 
         + '<div class="todo-edit-actions">'
