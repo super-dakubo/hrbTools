@@ -1698,6 +1698,7 @@ document.getElementById('todoAddBtn').addEventListener('click', function() {
 todoSearch.addEventListener('input', function() { renderTodos(); });
 todoFilterStatus.addEventListener('change', function() { renderTodos(); });
 todoFilterPriority.addEventListener('change', function() { renderTodos(); });
+
 function formatISOLocal(d) {
     var y = d.getFullYear();
     var m = String(d.getMonth() + 1).padStart(2, '0');
@@ -1710,6 +1711,7 @@ function formatISOLocal(d) {
 function calculateNextReminder(repeat, options) {
     var now = new Date();
     var hours = options.hours, minutes = options.minutes;
+    if (hours == null || isNaN(hours) || minutes == null || isNaN(minutes)) return '';
 
     if (repeat === 'daily') {
         var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
