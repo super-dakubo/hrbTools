@@ -1843,7 +1843,39 @@ function openTodoEditModal(id) {
 
         + '<div class="todo-edit-field">'
             + '<label>⏰ 提醒时间</label>'
-            + '<input type="datetime-local" id="editReminder" value="' + (todo.reminder ? todo.reminder.datetime : '') + '">'
+            + '<div class="reminder-input-group">'
+                // 不重复
+                + '<input type="datetime-local" id="editReminderOnce" class="ri ri-once" value="' + (todo.reminder && !todo.repeat ? todo.reminder.datetime : '') + '">'
+                // 每天
+                + '<input type="time" id="editReminderDaily" class="ri ri-daily" value="' + (todo.reminder && todo.repeat === 'daily' ? todo.reminder.datetime.slice(11, 16) : '') + '" style="display:none">'
+                // 每周
+                + '<span class="ri ri-weekly" style="display:none">'
+                    + '<select id="editReminderWeekday">'
+                        + '<option value="1">周一</option>'
+                        + '<option value="2">周二</option>'
+                        + '<option value="3">周三</option>'
+                        + '<option value="4">周四</option>'
+                        + '<option value="5">周五</option>'
+                        + '<option value="6">周六</option>'
+                        + '<option value="7">周日</option>'
+                    + '</select>'
+                    + '<input type="time" id="editReminderWeeklyTime">'
+                + '</span>'
+                // 每月
+                + '<span class="ri ri-monthly" style="display:none">'
+                    + '<select id="editReminderMonthDay">'
+                        + (function() {
+                            var opts = '';
+                            for (var i = 1; i <= 31; i++) opts += '<option value="' + i + '">' + i + '日</option>';
+                            opts += '<option value="last">最后一天</option>';
+                            opts += '<option value="second_last">倒数第二天</option>';
+                            opts += '<option value="third_last">倒数第三天</option>';
+                            return opts;
+                        })()
+                    + '</select>'
+                    + '<input type="time" id="editReminderMonthlyTime">'
+                + '</span>'
+            + '</div>'
         + '</div>'
 
         + '<div class="todo-edit-field">'
@@ -1859,6 +1891,25 @@ function openTodoEditModal(id) {
 
     document.querySelector('.container').appendChild(overlay);
 
+    // 编辑已有待办：恢复每周/每月的选择值
+    if (todo.reminder && todo.repeat === 'weekly') {
+        var d = new Date(todo.reminder.datetime);
+        var weekday = d.getDay() === 0 ? 7 : d.getDay(); // JS周日=0 → 我们的周日=7
+        overlay.querySelector('#editReminderWeekday').value = String(weekday);
+        overlay.querySelector('#editReminderWeeklyTime').value = todo.reminder.datetime.slice(11, 16);
+    }
+    if (todo.reminder && todo.repeat === 'monthly') {
+        var dayMode = todo.reminder.day_mode || 'fixed';
+        var timeVal = todo.reminder.datetime.slice(11, 16);
+        if (dayMode === 'last' || dayMode === 'second_last' || dayMode === 'third_last') {
+            overlay.querySelector('#editReminderMonthDay').value = dayMode;
+        } else {
+            var dayNum = new Date(todo.reminder.datetime).getDate();
+            overlay.querySelector('#editReminderMonthDay').value = String(dayNum);
+        }
+        overlay.querySelector('#editReminderMonthlyTime').value = timeVal;
+    }
+
     // 优先级切换
     overlay.querySelectorAll('.todo-priority-picker button').forEach(function(btn) {
         btn.addEventListener('click', function() {
@@ -1866,6 +1917,25 @@ function openTodoEditModal(id) {
             this.classList.add('active');
         });
     });
+
+    // 重复类型切换 → 切换提醒输入控件
+    function switchReminderInput(repeatVal) {
+        overlay.querySelectorAll('.ri').forEach(function(el) { el.style.display = 'none'; });
+        if (repeatVal === null || repeatVal === '') {
+            overlay.querySelector('.ri-once').style.display = '';
+        } else if (repeatVal === 'daily') {
+            overlay.querySelector('.ri-daily').style.display = '';
+        } else if (repeatVal === 'weekly') {
+            overlay.querySelector('.ri-weekly').style.display = '';
+        } else if (repeatVal === 'monthly') {
+            overlay.querySelector('.ri-monthly').style.display = '';
+        }
+    }
+    var repeatSelect = overlay.querySelector('#editRepeat');
+    repeatSelect.addEventListener('change', function() {
+        switchReminderInput(this.value || null);
+    });
+    switchReminderInput(repeatSelect.value || null); // 初始化状态
 
     overlay.querySelector('#editCancelBtn').addEventListener('click', function() { overlay.remove(); });
 
