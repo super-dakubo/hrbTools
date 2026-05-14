@@ -1968,9 +1968,44 @@ function openTodoEditModal(id) {
         todo.due_date = overlay.querySelector('#editDueDate').value || null;
         todo.tags = overlay.querySelector('#editTags').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
         todo.notes = overlay.querySelector('#editNotes').value;
-        var reminderVal = overlay.querySelector('#editReminder').value;
+        var repeatType = overlay.querySelector('#editRepeat').value;
+        var reminderVal = null;
+        var dayMode = 'fixed';
+
+        if (repeatType === '' || repeatType === null) {
+            // 不重复
+            reminderVal = overlay.querySelector('#editReminderOnce').value;
+        } else if (repeatType === 'daily') {
+            var timeVal = overlay.querySelector('#editReminderDaily').value;
+            if (timeVal) {
+                var parts = timeVal.split(':');
+                reminderVal = calculateNextReminder('daily', { hours: parseInt(parts[0], 10), minutes: parseInt(parts[1], 10) });
+            }
+        } else if (repeatType === 'weekly') {
+            var weekday = parseInt(overlay.querySelector('#editReminderWeekday').value, 10);
+            var timeVal = overlay.querySelector('#editReminderWeeklyTime').value;
+            if (timeVal) {
+                var parts = timeVal.split(':');
+                reminderVal = calculateNextReminder('weekly', { weekday: weekday, hours: parseInt(parts[0], 10), minutes: parseInt(parts[1], 10) });
+            }
+        } else if (repeatType === 'monthly') {
+            var daySelect = overlay.querySelector('#editReminderMonthDay');
+            var dayVal = daySelect.value;
+            var timeVal = overlay.querySelector('#editReminderMonthlyTime').value;
+            if (timeVal) {
+                var parts = timeVal.split(':');
+                var specialDays = ['last', 'second_last', 'third_last'];
+                if (specialDays.indexOf(dayVal) !== -1) {
+                    dayMode = dayVal;
+                    reminderVal = calculateNextReminder('monthly', { dayMode: dayVal, hours: parseInt(parts[0], 10), minutes: parseInt(parts[1], 10) });
+                } else {
+                    reminderVal = calculateNextReminder('monthly', { dayMode: 'fixed', day: parseInt(dayVal, 10), hours: parseInt(parts[0], 10), minutes: parseInt(parts[1], 10) });
+                }
+            }
+        }
+
         if (reminderVal) {
-            todo.reminder = { datetime: reminderVal, sound: true };
+            todo.reminder = { datetime: reminderVal, sound: true, day_mode: dayMode };
         } else {
             todo.reminder = null;
         }
