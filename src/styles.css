@@ -30,12 +30,12 @@
     --shadow: rgba(0,0,0,0.4);
 
     /* 排版 */
-    --font-xs: 0.6rem;
-    --font-sm: 0.72rem;
-    --font-base: 0.8rem;
-    --font-md: 0.9rem;
-    --font-lg: 1.1rem;
-    --font-xl: 1.3rem;
+    --font-xs: 0.65rem;
+    --font-sm: 0.78rem;
+    --font-base: 0.85rem;
+    --font-md: 0.95rem;
+    --font-lg: 1.15rem;
+    --font-xl: 1.4rem;
 
     /* 圆角 */
     --radius-sm: 4px;
@@ -117,7 +117,7 @@ body {
 .title-bar {
     display: flex;
     align-items: center;
-    padding: 6px 10px;
+    padding: 8px 14px;
     background: var(--titlebar-bg);
     border-bottom: 1px solid var(--border);
     -webkit-app-region: drag;
@@ -126,7 +126,7 @@ body {
 }
 
 .title-bar-text {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-secondary);
     flex-shrink: 0;
@@ -137,8 +137,8 @@ body {
 .title-bar-btn {
     width: auto;
     margin: 0;
-    padding: 4px 10px;
-    font-size: 0.85rem;
+    padding: 5px 14px;
+    font-size: 0.9rem;
     background: transparent;
     color: var(--text-muted);
     border: none;
@@ -164,10 +164,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 16px 10px;
+    padding: 20px 12px;
     background: var(--tab-bar-bg);
     border-right: 1px solid var(--input-bg);
-    width: 72px;
+    width: 80px;
     flex-shrink: 0;
 }
 
@@ -177,7 +177,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 4px;
-    padding: 12px 6px;
+    padding: 14px 8px;
     background: transparent;
     border: none;
     border-radius: 10px;
@@ -208,13 +208,13 @@ body {
     color: var(--text);
 }
 
-.tab-icon { font-size: 1.3rem; line-height: 1; }
-.tab-label { font-size: 0.7rem; font-weight: 500; white-space: nowrap; }
+.tab-icon { font-size: 1.5rem; line-height: 1; }
+.tab-label { font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
 
 /* ==================== 右侧内容区 ==================== */
 .content {
     flex: 1;
-    padding: 20px 24px;
+    padding: 24px 28px;
     min-width: 0;
     position: relative;
     overflow: hidden;
@@ -224,26 +224,26 @@ body {
 .panel {
     display: block;
     position: absolute;
-    top: 20px;
-    left: 24px;
-    right: 24px;
-    bottom: 20px;
+    top: 24px;
+    left: 28px;
+    right: 28px;
+    bottom: 24px;
     overflow-y: auto;
     opacity: 0;
     pointer-events: none;
     visibility: hidden;
-    will-change: opacity;
     transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 .panel.active {
     opacity: 1;
     pointer-events: auto;
     visibility: visible;
+    will-change: opacity;
 }
 
 /* ==================== 共用组件 ==================== */
 h1 {
-    font-size: 1.15rem;
+    font-size: 1.3rem;
     margin-top: 0;
     margin-bottom: 1rem;
     color: var(--text);
@@ -251,7 +251,7 @@ h1 {
 }
 
 h3 {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: var(--text-secondary);
     margin-bottom: 0.5rem;
 }
@@ -263,15 +263,15 @@ label {
     font-weight: 500;
     margin-bottom: 0.35rem;
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
 }
 
 input, select {
     width: 100%;
-    padding: 0.55rem 0.7rem;
+    padding: 0.6rem 0.8rem;
     border: 1px solid var(--border-strong);
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     background: var(--input-bg);
     color: var(--text);
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -291,8 +291,8 @@ button {
     color: #fff;
     border: none;
     width: 100%;
-    padding: 0.6rem;
-    font-size: 0.95rem;
+    padding: 0.65rem;
+    font-size: var(--font-md);
     font-weight: 600;
     border-radius: 8px;
     cursor: pointer;
@@ -321,8 +321,8 @@ button:disabled:hover { background: var(--accent); }
 
 .btn-small {
     width: auto;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.8rem;
+    padding: 0.5rem 0.9rem;
+    font-size: var(--font-sm);
     flex-shrink: 0;
     margin-top: 0;
     border-radius: 6px;
@@ -333,8 +333,8 @@ button:disabled:hover { background: var(--accent); }
     color: var(--danger-text);
     border: 1px solid var(--danger-border);
     width: auto;
-    padding: 0.25rem 0.6rem;
-    font-size: 0.75rem;
+    padding: 0.3rem 0.7rem;
+    font-size: var(--font-xs);
     margin-top: 0;
     border-radius: 4px;
     margin-left: 2px;
@@ -352,8 +352,8 @@ button:disabled:hover { background: var(--accent); }
 
 .btn-pin {
     width: auto;
-    padding: 0.2rem 0.35rem;
-    font-size: 0.75rem;
+    padding: 0.25rem 0.4rem;
+    font-size: var(--font-xs);
     margin-top: 0;
     margin-left: 2px;
     border-radius: 4px;
@@ -382,8 +382,8 @@ button:disabled:hover { background: var(--accent); }
 
 .btn-tiny {
     width: auto;
-    padding: 0.25rem 0.6rem;
-    font-size: 0.75rem;
+    padding: 0.3rem 0.7rem;
+    font-size: var(--font-xs);
     font-weight: 500;
     margin-top: 0;
     border-radius: 6px;
@@ -403,7 +403,7 @@ button:disabled:hover { background: var(--accent); }
     overflow-x: auto;
     border-bottom: 1px solid var(--border);
     padding-bottom: 0;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
 }
@@ -412,10 +412,10 @@ button:disabled:hover { background: var(--accent); }
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 12px;
+    padding: 8px 14px;
     border-bottom: 2px solid transparent;
     color: var(--text-secondary);
-    font-size: 0.82rem;
+    font-size: var(--font-sm);
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
@@ -437,7 +437,7 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .game-tab .tab-close {
-    font-size: 1rem;
+    font-size: 1.1rem;
     opacity: 0;
     line-height: 1;
     transition: opacity 0.15s;
@@ -448,9 +448,9 @@ button:disabled:hover { background: var(--accent); }
 .game-tab .tab-close:hover { color: var(--danger-text); }
 
 .game-tab-add {
-    padding: 7px 10px;
+    padding: 8px 12px;
     color: var(--text-dim);
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
@@ -472,21 +472,21 @@ button:disabled:hover { background: var(--accent); }
     color: var(--text);
     padding: 2px 6px;
     border-radius: 4px;
-    font-size: 0.82rem;
-    width: 100px;
+    font-size: var(--font-sm);
+    width: 110px;
 }
 
 /* ==================== 存档位标签栏 ==================== */
 .slot-tabs {
     display: flex;
-    gap: 4px;
+    gap: 5px;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
     flex-wrap: wrap;
 }
 
 .slot-tabs-label {
-    font-size: 0.7rem;
+    font-size: var(--font-sm);
     color: var(--text-muted);
     margin-right: 4px;
     flex-shrink: 0;
@@ -496,12 +496,12 @@ button:disabled:hover { background: var(--accent); }
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 10px;
+    padding: 5px 12px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 15px;
     color: var(--text-secondary);
-    font-size: 0.78rem;
+    font-size: var(--font-sm);
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
@@ -519,7 +519,7 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .slot-tag .tag-close {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     opacity: 0;
     line-height: 1;
     transition: opacity 0.15s;
@@ -530,9 +530,9 @@ button:disabled:hover { background: var(--accent); }
 .slot-tag .tag-close:hover { color: var(--danger-text); }
 
 .slot-tag-add {
-    padding: 4px 8px;
+    padding: 5px 10px;
     color: var(--text-dim);
-    font-size: 1rem;
+    font-size: 1.1rem;
     white-space: nowrap;
     flex-shrink: 0;
     cursor: pointer;
@@ -552,8 +552,8 @@ button:disabled:hover { background: var(--accent); }
     border-bottom: 1px solid var(--text-muted);
     color: var(--text);
     padding: 1px 4px;
-    font-size: 0.78rem;
-    width: 60px;
+    font-size: var(--font-sm);
+    width: 70px;
     outline: none;
 }
 
@@ -583,15 +583,15 @@ button:disabled:hover { background: var(--accent); }
     margin-top: 0.8rem;
     background: var(--surface);
     border-radius: 10px;
-    padding: 0.7rem 1rem;
+    padding: 0.8rem 1.2rem;
     text-align: center;
     border: 1px solid var(--border);
-    font-size: 1.3rem;
+    font-size: var(--font-xl);
     font-weight: 700;
     color: var(--text);
     word-break: break-all;
     font-family: monospace;
-    min-height: 2.5rem;
+    min-height: 2.8rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -604,7 +604,7 @@ button:disabled:hover { background: var(--accent); }
     border-radius: 8px;
     padding: 0.5rem;
     margin-top: 0.8rem;
-    font-size: 0.85rem;
+    font-size: var(--font-sm);
     text-align: center;
     display: none;
 }
@@ -615,7 +615,7 @@ button:disabled:hover { background: var(--accent); }
     border-radius: 8px;
     padding: 0.5rem;
     margin-top: 0.8rem;
-    font-size: 0.85rem;
+    font-size: var(--font-sm);
     text-align: center;
     display: none;
 }
@@ -635,22 +635,22 @@ button:disabled:hover { background: var(--accent); }
 /* ==================== 存档列表 ==================== */
 .backup-list-section { margin-top: 1.2rem; }
 
-.backup-list { max-height: 260px; overflow-y: auto; }
+.backup-list { max-height: 280px; overflow-y: auto; }
 
 .empty-hint {
     text-align: center;
     color: var(--text-muted);
     padding: 1.5rem;
-    font-size: 0.85rem;
+    font-size: var(--font-sm);
 }
 
 .backup-item {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 0.5rem;
+    gap: 0.5rem;
+    padding: 0.55rem 0.6rem;
     border-bottom: 1px solid var(--surface);
-    font-size: 0.82rem;
+    font-size: var(--font-sm);
     border-radius: 4px;
 }
 
@@ -670,12 +670,12 @@ button:disabled:hover { background: var(--accent); }
 .backup-item .name {
     flex: 1;
     color: var(--text);
-    font-size: 0.82rem;
+    font-size: var(--font-sm);
 }
 
 .backup-item .hash-badge {
-    font-size: 0.65rem;
-    padding: 1px 5px;
+    font-size: var(--font-xs);
+    padding: 2px 6px;
     border-radius: 8px;
     flex-shrink: 0;
 }
@@ -691,7 +691,7 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .backup-item .original-path {
-    font-size: 0.7rem;
+    font-size: var(--font-xs);
     color: var(--text-muted);
     max-width: 80px;
     overflow: hidden;
@@ -706,8 +706,8 @@ button:disabled:hover { background: var(--accent); }
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px;
-    margin-bottom: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
 }
 
 .tz-set-header {
@@ -730,19 +730,19 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .tz-label {
-    font-size: 0.78rem;
+    font-size: var(--font-sm);
     color: var(--text-secondary);
     padding: 4px 0;
     font-weight: 500;
 }
 
 .tz-tz-select {
-    padding: 4px 6px;
+    padding: 5px 8px;
     background: var(--input-bg);
     border: 1px solid var(--surface-hover);
     border-radius: 5px;
     color: var(--text);
-    font-size: 0.75rem;
+    font-size: var(--font-sm);
     width: auto;
     cursor: pointer;
 }
@@ -808,12 +808,12 @@ button:disabled:hover { background: var(--accent); }
 
 .tz-row input {
     flex: 1;
-    padding: 5px 7px;
+    padding: 6px 8px;
     background: var(--input-bg);
     border: 1px solid var(--surface-hover);
     border-radius: 5px;
     color: var(--text);
-    font-size: 0.72rem;
+    font-size: var(--font-sm);
 }
 
 .tz-row input::placeholder { color: var(--text-muted); }
@@ -882,12 +882,12 @@ button:disabled:hover { background: var(--accent); }
 .tz-add-btn {
     width: 100%;
     margin: 0;
-    padding: 5px;
+    padding: 7px;
     background: var(--surface);
     border: 1px dashed var(--surface-hover);
     border-radius: 6px;
     text-align: center;
-    font-size: 0.78rem;
+    font-size: var(--font-sm);
     color: var(--text-dim);
     cursor: pointer;
 }
@@ -910,7 +910,7 @@ button:disabled:hover { background: var(--accent); }
     background: var(--bg);
     border: 1px solid var(--border-strong);
     border-radius: 12px;
-    width: 380px;
+    width: 400px;
     box-shadow: 0 12px 40px var(--shadow);
     overflow: hidden;
 }
@@ -919,18 +919,18 @@ button:disabled:hover { background: var(--accent); }
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 14px 18px;
     border-bottom: 1px solid var(--border);
 }
 
 .modal-title {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     color: var(--text);
 }
 
 .modal-close {
-    font-size: 1.2rem;
+    font-size: 1.4rem;
     color: var(--text-secondary);
     background: transparent;
     border: none;
@@ -943,10 +943,10 @@ button:disabled:hover { background: var(--accent); }
 
 .modal-close:hover { color: var(--text); }
 
-.modal-body { padding: 16px; }
+.modal-body { padding: 18px; }
 
 .settings-hint {
-    font-size: 0.7rem;
+    font-size: var(--font-xs);
     color: var(--text-dim);
     text-align: center;
     padding: 8px 0;
@@ -964,7 +964,7 @@ button:disabled:hover { background: var(--accent); }
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 4px 10px;
+    padding: 5px 12px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-pill);
@@ -972,13 +972,13 @@ button:disabled:hover { background: var(--accent); }
     font-size: var(--font-sm);
     white-space: nowrap;
     flex-shrink: 0;
-    max-width: 200px;
+    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .file-tag .tag-close {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     opacity: 0;
     line-height: 1;
     transition: opacity 0.15s;
@@ -991,7 +991,7 @@ button:disabled:hover { background: var(--accent); }
 .file-tag .tag-close:hover { color: var(--danger-text); }
 
 .file-tag-add {
-    padding: 4px 10px;
+    padding: 5px 12px;
     color: var(--text-dim);
     font-size: var(--font-sm);
     white-space: nowrap;
@@ -1052,28 +1052,85 @@ button:disabled:hover { background: var(--accent); }
     white-space: nowrap;
 }
 
+/* ==================== 提醒横幅区 ==================== */
+.banner-area {
+    flex-shrink: 0;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+}
+.banner-area.has-banners {
+    display: flex;
+}
+
+.banner-item {
+    display: flex;
+    align-items: center;
+    background: #e53935;
+    color: #fff;
+    padding: 8px 18px;
+    font-size: var(--font-sm);
+    font-weight: 500;
+    gap: 10px;
+    cursor: default;
+    user-select: none;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+.banner-item:last-child {
+    border-bottom: none;
+}
+
+.banner-item-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.banner-item-close {
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+.banner-item-close:hover {
+    background: rgba(255,255,255,0.35);
+}
+
 /* ==================== 待办工具 ==================== */
 .todo-toolbar {
     display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 10px;
+    margin-bottom: 12px;
 }
 
 .todo-search-input {
     flex: 1;
+    min-width: 120px;
 }
 
 .todo-filter-select {
     width: auto;
     min-width: 90px;
-    padding: 0.45rem 0.6rem;
+    flex-shrink: 0;
+    padding: 0.5rem 0.65rem;
     font-size: var(--font-sm);
 }
 
 .todo-stats {
     display: flex;
     gap: 16px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     font-size: var(--font-sm);
     color: var(--text-secondary);
 }
@@ -1085,15 +1142,15 @@ button:disabled:hover { background: var(--accent); }
 .todo-list {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    margin-bottom: 10px;
+    gap: 4px;
+    margin-bottom: 12px;
 }
 
 .todo-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 12px 14px;
     border-radius: var(--radius);
     transition: background 0.15s;
     cursor: default;
@@ -1117,8 +1174,8 @@ button:disabled:hover { background: var(--accent); }
 .todo-drag-handle:active { cursor: grabbing; }
 
 .todo-check {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     border: 2px solid var(--border-strong);
     border-radius: 50%;
     display: inline-flex;
@@ -1126,7 +1183,7 @@ button:disabled:hover { background: var(--accent); }
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: 13px;
     color: transparent;
     transition: background 0.15s, border-color 0.15s;
 }
@@ -1216,8 +1273,8 @@ button:disabled:hover { background: var(--accent); }
     color: var(--text-dim);
     border: none;
     cursor: pointer;
-    font-size: 16px;
-    padding: 0 4px;
+    font-size: 18px;
+    padding: 0 6px;
     line-height: 1;
     flex-shrink: 0;
     width: auto;
@@ -1248,19 +1305,47 @@ button:disabled:hover { background: var(--accent); }
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    padding: 20px;
-    width: auto;
-    min-width: 400px;
+    padding: 28px;
+    width: 560px;
     max-width: 90vw;
     max-height: 90vh;
     overflow-y: auto;
 }
 
+.todo-edit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 1;
+    padding-bottom: 6px;
+}
 .todo-edit-title {
     font-size: var(--font-md);
     font-weight: 600;
-    margin-bottom: 12px;
     color: var(--text);
+}
+.todo-edit-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 22px;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+    line-height: 1;
+}
+.todo-edit-close:hover {
+    color: var(--text);
+    background: var(--surface-hover);
 }
 
 .todo-edit-field { margin-bottom: 10px; }
@@ -1274,22 +1359,15 @@ button:disabled:hover { background: var(--accent); }
 
 .todo-edit-field textarea {
     width: 100%;
-    padding: 0.55rem 0.7rem;
+    padding: 0.6rem 0.8rem;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     font-size: var(--font-base);
     background: var(--input-bg);
     color: var(--text);
     resize: vertical;
-    min-height: 60px;
+    min-height: 70px;
     font-family: inherit;
-}
-
-.todo-edit-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-top: 12px;
 }
 
 .todo-edit-actions button { width: auto; margin: 0; }
@@ -1301,7 +1379,7 @@ button:disabled:hover { background: var(--accent); }
 
 .todo-priority-picker button {
     flex: 1;
-    padding: 0.35rem;
+    padding: 0.4rem;
     font-size: var(--font-sm);
     background: var(--surface-hover);
     color: var(--text-secondary);
@@ -1343,9 +1421,9 @@ button:disabled:hover { background: var(--accent); }
 
 .log-toolbar {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
     flex-shrink: 0;
 }
 .log-search-input {
@@ -1363,21 +1441,21 @@ button:disabled:hover { background: var(--accent); }
     border-color: var(--accent);
 }
 .log-filter-select {
-    width: 75px;
+    width: 85px;
     flex-shrink: 0;
-    padding: 6px 4px;
+    padding: 6px 6px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--input-bg);
     color: var(--text);
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
 }
 
 .log-entries {
     flex: 1;
     overflow-y: auto;
     font-family: monospace;
-    font-size: var(--font-xs);
+    font-size: var(--font-sm);
     line-height: 1.6;
     background: var(--input-bg);
     border: 1px solid var(--border);
@@ -1387,7 +1465,7 @@ button:disabled:hover { background: var(--accent); }
 .log-entry {
     display: flex;
     gap: 8px;
-    padding: 2px 4px;
+    padding: 3px 4px;
     border-bottom: 1px solid var(--border);
     align-items: baseline;
 }
@@ -1418,4 +1496,41 @@ button:disabled:hover { background: var(--accent); }
     flex: 1;
     word-break: break-all;
     color: var(--text);
+}
+
+/* ==================== 启动加载层 ==================== */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: var(--bg);
+    transition: opacity 0.3s ease;
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: var(--font-base);
+    color: var(--text-secondary);
 }
