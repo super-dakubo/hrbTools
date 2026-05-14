@@ -64,6 +64,12 @@ fn last_sunday_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     last_day.pred_opt().unwrap().checked_sub_days(chrono::Days::new(dow as u64)).unwrap()
 }
 
+/// 计算某月的最后一天
+fn last_day_of_month(year: i32, month: u32) -> chrono::NaiveDate {
+    let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+    chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).unwrap().pred_opt().unwrap()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ConvertRequest {
     datetime_str: String,
@@ -238,6 +244,8 @@ struct ReminderConfig {
     datetime: String,
     #[serde(default)]
     sound: bool,
+    #[serde(default)]
+    day_mode: String,   // "fixed" | "last" | "second_last" | "third_last"，仅 monthly 有效
 }
 
 // ==================== 备份信息 ====================
@@ -303,7 +311,6 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
                         }
                     }
                 }
-                set_auto_start(config.auto_start);  // 确保注册表与应用配置一致
                 config
             }
             Err(_) => AppConfig::default(),
@@ -1449,12 +1456,32 @@ fn main() {
                                 match repeat.as_str() {
                                     "daily" => next_dt += chrono::Duration::days(1),
                                     "weekly" => next_dt += chrono::Duration::days(7),
-                                    "monthly" => next_dt = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt),
+                                    "monthly" => {
+                                        let day_mode = reminder.day_mode.as_str();
+                                        match day_mode {
+                                            "last" => {
+                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                next_dt = chrono::NaiveDateTime::new(last, next_dt.time());
+                                            }
+                                            "second_last" => {
+                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(1), next_dt.time());
+                                            }
+                                            "third_last" => {
+                                                let last = last_day_of_month(next_dt.year(), next_dt.month());
+                                                next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(2), next_dt.time());
+                                            }
+                                            _ => { // "fixed" 或空字符串 = 向后兼容
+                                                next_dt = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
+                                            }
+                                        }
+                                    }
                                     _ => {}
                                 }
                                 todo.reminder = Some(ReminderConfig {
                                     datetime: next_dt.format("%Y-%m-%dT%H:%M").to_string(),
                                     sound: reminder.sound,
+                                    day_mode: reminder.day_mode.clone(),
                                 });
                                 adv_due(&mut todo.due_date);
                             }
