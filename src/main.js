@@ -52,6 +52,12 @@ const TAB_DEFS = {
 };
 const DEFAULT_TAB_ORDER = ['convert', 'backup', 'todo', 'log'];
 let currentTab = 'convert';
+let _switchLock = false;
+let _lastTabClick = 0;
+let _lastGameTabClick = 0;
+let _lastSlotTabClick = 0;
+let _refreshLock = false;
+const TAB_DEBOUNCE_MS = 300;
 
 function renderTabBar() {
     const tabBar = document.getElementById('tabBar');
@@ -157,17 +163,32 @@ function bindTabEvents() {
         tabDragState = { tab: tab, idx: idx, startY: e.clientY };
     });
 
-    // 事件委托：click 切换 Tab
+    // 事件委托：click 切换 Tab（带防抖）
     tabBar.addEventListener('click', function(e) {
         var tab = e.target.closest('.tab');
         if (!tab || tabWasDragged) return;
         var tabId = tab.dataset.tab;
-        if (tabId !== currentTab) switchTab(tabId);
+        if (tabId !== currentTab) {
+            var clickTime = Date.now();
+            if (clickTime - _lastTabClick < TAB_DEBOUNCE_MS) {
+                window.__log.perf('TabSwitch', '防抖忽略切到' + tabId, { interval: clickTime - _lastTabClick });
+                return;
+            }
+            _lastTabClick = clickTime;
+            switchTab(tabId);
+        }
     });
 }
 
 function switchTab(tabId) {
-    var t0 = performance.now();
+    var now = performance.now();
+    window.__log.perf('TabSwitch', '请求切到' + tabId, { lock: _switchLock });
+
+    if (_switchLock) {
+        window.__log.perf('TabSwitch', '阻断: 切换锁占用中', { tabId: tabId });
+        return;
+    }
+    _switchLock = true;
 
     currentTab = tabId;
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
@@ -184,18 +205,28 @@ function switchTab(tabId) {
     else if (tabId === 'log') { renderLogPanel(); }
 
     var t2 = performance.now();
+    window.__log.perf('TabSwitch', '执行切到' + tabId, { dom: +(t1 - now).toFixed(2), action: +(t2 - t1).toFixed(2) });
 
     requestAnimationFrame(function() {
         requestAnimationFrame(function() {
             var renderEnd = performance.now();
-            window.__log.perf('TabSwitch', '切到' + tabId, {
-                dom: +(t1 - t0).toFixed(2),
+            window.__log.perf('TabSwitch', '完成切到' + tabId, {
+                dom: +(t1 - now).toFixed(2),
                 action: +(t2 - t1).toFixed(2),
                 render: +(renderEnd - t2).toFixed(2),
-                total: +(renderEnd - t0).toFixed(2)
+                total: +(renderEnd - now).toFixed(2)
             });
+            _switchLock = false;
         });
     });
+
+    // 安全兜底：5秒后强制解锁，防止锁永远不被释放
+    setTimeout(function() {
+        if (_switchLock) {
+            window.__log.warn('TabSwitch', '强制解锁 switchTab (超时)');
+            _switchLock = false;
+        }
+    }, 5000);
 }
 
 // ==================== 时间转换 ====================
@@ -237,6 +268,7 @@ function formatDatetimeStr(rustStr, format) {
 }
 
 function renderTimezoneSets() {
+    var t0 = performance.now();
     const sorted = [...currentConfig.timezone_sets].sort((a, b) => {
         if (a.id === 'beijing') return -1;
         if (b.id === 'beijing') return 1;
@@ -286,6 +318,7 @@ function renderTimezoneSets() {
             </div>
         </div>`;
     }).join('');
+    window.__log.perf('Render', 'renderTimezoneSets', { ms: +(performance.now() - t0).toFixed(2), sets: currentConfig.timezone_sets.length });
 }
 
 function saveTimezoneValues() {
@@ -490,6 +523,7 @@ function setCurrentFilePaths(paths) {
 }
 
 function renderFileTags() {
+    var t0 = performance.now();
     if (!fileTagsContainer) return;
     const paths = getCurrentFilePaths();
     if (paths.length === 0) {
@@ -505,8 +539,8 @@ function renderFileTags() {
         }).join('') + '<button class="file-tag-add" id="addFileBtn" title="添加文件">+</button>';
     }
 
-    bindFileTagEvents();
-}
+    window.__log.perf('Render', 'renderFileTags', { ms: +(performance.now() - t0).toFixed(2), files: paths.length });
+    }
 
 function bindFileTagEvents() {
     const addBtn = document.getElementById('addFileBtn');
@@ -544,6 +578,7 @@ function bindFileTagEvents() {
 // ==================== 游戏标签渲染 ====================
 
 function renderGameTabs() {
+    var t0 = performance.now();
     const games = getSortedGames();
     gameTabs.innerHTML = games.map(g => {
         const activeClass = g.id === selectedGameId ? ' active' : '';
@@ -556,7 +591,7 @@ function renderGameTabs() {
                 </button>`;
     }).join('') + `<button class="game-tab-add" id="addGameBtn" title="新增游戏">+</button>`;
 
-    bindGameTabEvents();
+    window.__log.perf('Render', 'renderGameTabs', { ms: +(performance.now() - t0).toFixed(2), games: games.length });
 }
 
 function getSortedGames() {
@@ -702,11 +737,12 @@ async function toggleGamePin(gameId) {
 // ==================== 存档位标签渲染 ====================
 
 function renderSlotTabs() {
-    if (!selectedGameId) { slotTabs.innerHTML = ''; return; }
+    var t0 = performance.now();
+    if (!selectedGameId) { slotTabs.innerHTML = ''; window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: 0 }); return; }
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game || game.slots.length === 0) {
         slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>';
-        return;
+        window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: 0 }); return;
     }
 
     slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>' +
@@ -719,7 +755,7 @@ function renderSlotTabs() {
         }).join('') +
         `<button class="slot-tag-add" id="addSlotBtn" title="新增存档位">+</button>`;
 
-    bindSlotTagEvents(game);
+    window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: game.slots.length });
 }
 
 function bindSlotTagEvents(game) {
@@ -839,6 +875,7 @@ function restoreFilePaths() {
 // ==================== 哈希 ====================
 
 async function refreshCurrentHashes() {
+    var t0 = performance.now();
     if (!selectedGameId || !selectedSlotId) return;
     const key = selectedGameId + ':' + selectedSlotId;
     const fps = filePathsBySlot[key];
@@ -849,7 +886,8 @@ async function refreshCurrentHashes() {
     try {
         const hashes = await invoke('compute_hash', { filePaths: fps, patterns: patterns });
         currentHashesBySlot[key] = hashes;
-    } catch (e) { /* source might not exist, ignore */ }
+        window.__log.perf('Render', 'refreshCurrentHashes', { ms: +(performance.now() - t0).toFixed(2), files: fps.length });
+    } catch (e) { window.__log.perf('Render', 'refreshCurrentHashes', { ms: +(performance.now() - t0).toFixed(2), error: 'fail' }); }
 }
 
 // ==================== 文件选择 ====================
@@ -920,6 +958,7 @@ saveBackupBtn.addEventListener('click', async () => {
 // ==================== 备份列表 ====================
 
 async function refreshBackupList() {
+    var t0 = performance.now();
     if (!selectedGameId || !selectedSlotId) {
         backupList.innerHTML = '<div class="empty-hint">请先选择游戏和存档位</div>';
         backupListTitle.textContent = '备份记录';
@@ -933,13 +972,16 @@ async function refreshBackupList() {
         : '备份记录';
 
     try {
+        var tIpc = performance.now();
         const backups = await invoke('list_backups', {
             gameId: selectedGameId,
             slotId: selectedSlotId
         });
+        var ipcMs = +(performance.now() - tIpc).toFixed(2);
 
         if (backups.length === 0) {
             backupList.innerHTML = '<div class="empty-hint">暂无备份</div>';
+            window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: 0, ipc: ipcMs });
             return;
         }
 
@@ -974,9 +1016,10 @@ async function refreshBackupList() {
             </div>`;
         }).join('');
 
-        bindBackupItemEvents();
+        window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: backups.length, ipc: ipcMs });
     } catch (err) {
         backupList.innerHTML = `<div class="empty-hint">加载失败: ${escapeHtml(String(err))}</div>`;
+        window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), error: String(err) });
     }
 }
 
@@ -1361,9 +1404,8 @@ function showBackupSuccess(msg) {
 // ==================== 工具函数 ====================
 
 function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    // 纯字符串替换，不创建 DOM 元素 — 避免 GC 压力
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function shortenPath(path) {
@@ -1373,16 +1415,22 @@ function shortenPath(path) {
     return '.../' + parts.slice(-2).join('/');
 }
 
-function refreshAll() {
+async function refreshAll() {
+    if (_refreshLock) {
+        window.__log.perf('Backup', '阻断: refreshAll 锁占用中');
+        return;
+    }
+    _refreshLock = true;
     var t0 = performance.now();
     renderGameTabs();
     renderSlotTabs();
     if (selectedGameId && selectedSlotId) {
         restoreFilePaths();
-        refreshCurrentHashes();
-        refreshBackupList();
+        await refreshCurrentHashes();
+        await refreshBackupList();
     }
     window.__log.perf('Backup', '刷新备份列表', { ms: +(performance.now() - t0).toFixed(2) });
+    _refreshLock = false;
 }
 
 // ==================== 待办工具 ====================
@@ -1445,6 +1493,7 @@ function autoClearExpiredPaused() {
 }
 
 function renderTodos() {
+    var t0 = performance.now();
     autoClearExpiredPaused();
     const items = currentConfig.todos || [];
     const keyword = (todoSearch.value || '').toLowerCase();
@@ -1476,14 +1525,6 @@ function renderTodos() {
         + '<span class="' + (statusFilter === 'active' ? 'active' : '') + '" data-filter="active">待完成 <span class="count">' + active + '</span></span>'
         + '<span class="' + (statusFilter === 'done' ? 'active' : '') + '" data-filter="done">已完成 <span class="count">' + doneCount + '</span></span>';
 
-    // 绑定统计点击切换
-    todoStats.querySelectorAll('span').forEach(el => {
-        el.addEventListener('click', function() {
-            todoFilterStatus.value = this.dataset.filter;
-            renderTodos();
-        });
-    });
-
     // 渲染列表
     if (sorted.length === 0) {
         todoList.innerHTML = '<div class="empty-hint">暂无待办，在下方添加</div>';
@@ -1507,7 +1548,7 @@ function renderTodos() {
             + '</div>';
     }).join('');
 
-    bindTodoEvents();
+    window.__log.perf('Render', 'renderTodos', { ms: +(performance.now() - t0).toFixed(2), total: items.length, filtered: sorted.length });
 }
 
 function isOverdue(dateStr) {
@@ -1657,6 +1698,77 @@ document.getElementById('todoAddBtn').addEventListener('click', function() {
 todoSearch.addEventListener('input', function() { renderTodos(); });
 todoFilterStatus.addEventListener('change', function() { renderTodos(); });
 todoFilterPriority.addEventListener('change', function() { renderTodos(); });
+function formatISOLocal(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var h = String(d.getHours()).padStart(2, '0');
+    var min = String(d.getMinutes()).padStart(2, '0');
+    return y + '-' + m + '-' + day + 'T' + h + ':' + min;
+}
+
+function calculateNextReminder(repeat, options) {
+    var now = new Date();
+    var hours = options.hours, minutes = options.minutes;
+
+    if (repeat === 'daily') {
+        var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+        if (target <= now) target.setDate(target.getDate() + 1);
+        return formatISOLocal(target);
+    }
+
+    if (repeat === 'weekly') {
+        // options.weekday: 1=周一 ... 7=周日
+        var jsTarget = options.weekday === 7 ? 0 : options.weekday;
+        var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+        var daysUntil = (jsTarget - now.getDay() + 7) % 7;
+        if (daysUntil === 0 && target <= now) daysUntil = 7;
+        target.setDate(target.getDate() + daysUntil);
+        return formatISOLocal(target);
+    }
+
+    if (repeat === 'monthly') {
+        if (options.dayMode === 'last') {
+            var target = new Date(now.getFullYear(), now.getMonth() + 1, 0, hours, minutes, 0, 0);
+            if (target <= now) {
+                target = new Date(now.getFullYear(), now.getMonth() + 2, 0, hours, minutes, 0, 0);
+            }
+            return formatISOLocal(target);
+        }
+        if (options.dayMode === 'second_last') {
+            var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            var target = new Date(last.getFullYear(), last.getMonth(), last.getDate() - 1, hours, minutes, 0, 0);
+            if (target <= now) {
+                last = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+                target = new Date(last.getFullYear(), last.getMonth(), last.getDate() - 1, hours, minutes, 0, 0);
+            }
+            return formatISOLocal(target);
+        }
+        if (options.dayMode === 'third_last') {
+            var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            var target = new Date(last.getFullYear(), last.getMonth(), last.getDate() - 2, hours, minutes, 0, 0);
+            if (target <= now) {
+                last = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+                target = new Date(last.getFullYear(), last.getMonth(), last.getDate() - 2, hours, minutes, 0, 0);
+            }
+            return formatISOLocal(target);
+        }
+        // fixed
+        var daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        var clampedDay = Math.min(options.day, daysInMonth);
+        var target = new Date(now.getFullYear(), now.getMonth(), clampedDay, hours, minutes, 0, 0);
+        if (target <= now) {
+            var nextMonth = now.getMonth() + 1;
+            var nextYear = now.getFullYear();
+            if (nextMonth > 11) { nextMonth = 0; nextYear++; }
+            var daysInNext = new Date(nextYear, nextMonth + 1, 0).getDate();
+            target = new Date(nextYear, nextMonth, Math.min(options.day, daysInNext), hours, minutes, 0, 0);
+        }
+        return formatISOLocal(target);
+    }
+
+    return '';
+}
 
 // 编辑弹窗
 function openTodoEditModal(id) {
@@ -1820,9 +1932,230 @@ document.addEventListener('DOMContentLoaded', async function() {
                 bindLogPanelEvents();
                 window.__log.loadFromFile();
             }, 100);
+
+            // 第四步：一次性事件委托，替代每次渲染后重新绑定监听器
+            setupEventDelegation();
         });
     });
 });
+
+// ==================== 事件委托（一次性设置，替代每次渲染后重新绑定） ====================
+
+function setupEventDelegation() {
+
+    // ─── 游戏标签 ───
+    gameTabs.addEventListener('click', async function(e) {
+        // 新增游戏
+        var addBtn = e.target.closest('.game-tab-add');
+        if (addBtn) {
+            var gameId = crypto.randomUUID();
+            var slotId = crypto.randomUUID();
+            var n = currentConfig.games.length + 1;
+            currentConfig.games.push({
+                id: gameId, name: '游戏' + n,
+                slots: [{ id: slotId, name: '存档1', file_paths: [], next_backup_number: 1, key_file_patterns: [] }],
+                pinned: false
+            });
+            await saveConfigToBackend();
+            selectedGameId = gameId;
+            selectedSlotId = slotId;
+            renderGameTabs();
+            renderSlotTabs();
+            refreshBackupList();
+            setTimeout(function() {
+                var newTab = document.querySelector('.game-tab[data-game-id="' + gameId + '"]');
+                if (newTab) startInlineEditGame(newTab);
+            }, 50);
+            return;
+        }
+        // 删除游戏
+        var delBtn = e.target.closest('[data-action="delete-game"]');
+        if (delBtn) {
+            var gId = delBtn.dataset.gameId;
+            var game = currentConfig.games.find(function(g) { return g.id === gId; });
+            if (!game) return;
+            if (!confirm('确定删除游戏「' + game.name + '」及其所有存档位吗？')) return;
+            currentConfig.games = currentConfig.games.filter(function(g) { return g.id !== gId; });
+            if (selectedGameId === gId) { selectedGameId = ''; selectedSlotId = ''; }
+            await saveConfigToBackend();
+            renderGameTabs();
+            renderSlotTabs();
+            refreshBackupList();
+            return;
+        }
+        // 置顶切换
+        var pinBtn = e.target.closest('[data-action="pin-game"]');
+        if (pinBtn) {
+            toggleGamePin(pinBtn.dataset.gameId);
+            return;
+        }
+        // 选中游戏
+        var tab = e.target.closest('.game-tab');
+        if (!tab) return;
+        var gId = tab.dataset.gameId;
+        if (gId !== selectedGameId) {
+            var now = Date.now();
+            if (now - _lastGameTabClick < TAB_DEBOUNCE_MS) return;
+            _lastGameTabClick = now;
+            selectedGameId = gId;
+            selectedSlotId = '';
+            var g = currentConfig.games.find(function(g) { return g.id === gId; });
+            if (g && g.slots.length > 0) {
+                selectedSlotId = g.slots[0].id;
+                restoreFilePaths();
+            }
+            renderGameTabs();
+            renderSlotTabs();
+            refreshBackupList();
+        }
+    });
+
+    gameTabs.addEventListener('dblclick', function(e) {
+        if (e.target.closest('[data-action="delete-game"]')) return;
+        var tab = e.target.closest('.game-tab');
+        if (!tab) return;
+        startInlineEditGame(tab);
+    });
+
+    // ─── 存档位标签 ───
+    slotTabs.addEventListener('click', async function(e) {
+        // 新增存档位
+        var addBtn = e.target.closest('.slot-tag-add');
+        if (addBtn) {
+            var game = currentConfig.games.find(function(g) { return g.id === selectedGameId; });
+            if (!game) return;
+            var slotId = crypto.randomUUID();
+            var n = game.slots.length + 1;
+            game.slots.push({ id: slotId, name: '存档' + n, file_paths: [], next_backup_number: 1, key_file_patterns: [] });
+            await saveConfigToBackend();
+            selectedSlotId = slotId;
+            renderSlotTabs();
+            refreshBackupList();
+            setTimeout(function() {
+                var newTag = document.querySelector('.slot-tag[data-slot-id="' + slotId + '"]');
+                if (newTag) startInlineEditSlot(newTag);
+            }, 50);
+            return;
+        }
+        // 删除存档位
+        var delBtn = e.target.closest('[data-action="delete-slot"]');
+        if (delBtn) {
+            var game = currentConfig.games.find(function(g) { return g.id === selectedGameId; });
+            if (!game) return;
+            var slotId = delBtn.dataset.slotId;
+            var slot = game.slots.find(function(s) { return s.id === slotId; });
+            if (!slot) return;
+            if (game.slots.length <= 1) { alert('至少保留一个存档位'); return; }
+            if (!confirm('确定删除存档位「' + slot.name + '」及其所有备份吗？')) return;
+            game.slots = game.slots.filter(function(s) { return s.id !== slotId; });
+            if (selectedSlotId === slotId) selectedSlotId = game.slots[0].id;
+            await saveConfigToBackend();
+            renderSlotTabs();
+            refreshBackupList();
+            return;
+        }
+        // 选中存档位
+        var tag = e.target.closest('.slot-tag');
+        if (!tag) return;
+        var slotId = tag.dataset.slotId;
+        if (slotId !== selectedSlotId) {
+            var now = Date.now();
+            if (now - _lastSlotTabClick < TAB_DEBOUNCE_MS) return;
+            _lastSlotTabClick = now;
+            selectedSlotId = slotId;
+            restoreFilePaths();
+            renderSlotTabs();
+            refreshBackupList();
+        }
+    });
+
+    slotTabs.addEventListener('dblclick', function(e) {
+        if (e.target.closest('[data-action="delete-slot"]')) return;
+        var tag = e.target.closest('.slot-tag');
+        if (!tag) return;
+        startInlineEditSlot(tag);
+    });
+
+    // ─── 文件标签 ───
+    fileTagsContainer.addEventListener('click', async function(e) {
+        var addBtn = e.target.closest('.file-tag-add, #addFileBtn');
+        if (addBtn) {
+            var startDir = (currentConfig.backup_root || null);
+            var path = await invoke('pick_file', { startDir: startDir });
+            if (path) {
+                var paths = getCurrentFilePaths();
+                if (!paths.includes(path)) {
+                    paths.push(path);
+                    setCurrentFilePaths(paths);
+                    renderFileTags();
+                    await refreshCurrentHashes();
+                    refreshBackupList();
+                }
+            }
+            return;
+        }
+        var removeBtn = e.target.closest('[data-action="remove-file"]');
+        if (removeBtn) {
+            var idx = parseInt(removeBtn.dataset.index, 10);
+            var paths = getCurrentFilePaths();
+            paths.splice(idx, 1);
+            setCurrentFilePaths(paths);
+            renderFileTags();
+            await refreshCurrentHashes();
+            refreshBackupList();
+        }
+    });
+
+    // ─── 备份列表操作 ───
+    backupList.addEventListener('click', async function(e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        var action = btn.dataset.action;
+        var folder = btn.dataset.folder;
+
+        if (action === 'restore') await handleRestore(folder);
+        else if (action === 'rename-backup') await handleRenameBackup(folder, btn.dataset.desc);
+        else if (action === 'delete-backup') await handleDeleteBackup(folder);
+        else if (action === 'toggle-pin') await handleTogglePin(btn, folder);
+        else if (action === 'open-backup') await handleOpenBackupFolder(folder);
+        else if (action === 'rehash-backup') await handleRehashBackup(btn, folder);
+    });
+
+    // ─── 待办列表 ───
+    todoList.addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        var action = btn.dataset.action;
+        var id = btn.closest('.todo-item');
+        id = id ? id.dataset.id : null;
+        if (!id) return;
+
+        if (action === 'toggle-todo') {
+            toggleTodoDone(id);
+        } else if (action === 'edit-todo') {
+            openTodoEditModal(id);
+        } else if (action === 'delete-todo') {
+            if (confirm('确定删除此待办？')) deleteTodo(id);
+        } else if (action === 'toggle-pause') {
+            var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+            if (!todo || !todo.reminder) return;
+            var now = new Date();
+            var reminderTime = new Date(todo.reminder.datetime);
+            if (reminderTime <= now) return;
+            todo.paused = !todo.paused;
+            saveConfigToBackend();
+            renderTodos();
+        }
+    });
+
+    // ─── 待办统计栏点击筛选 ───
+    todoStats.addEventListener('click', function(e) {
+        var span = e.target.closest('span[data-filter]');
+        if (!span) return;
+        todoFilterStatus.value = span.dataset.filter;
+        renderTodos();
+    });
+}
 
 // ==================== 日志系统 ====================
 
@@ -1945,6 +2278,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 // ==================== 日志面板渲染 ====================
 
 function renderLogPanel() {
+    var t0 = performance.now();
     var filterLevel = (document.getElementById('logLevelFilter') || {}).value || 'ALL';
     var searchText = (document.getElementById('logSearch') || {}).value || '';
     var entries = window.__log.getEntries({ level: filterLevel, search: searchText });
@@ -1982,6 +2316,7 @@ function renderLogPanel() {
             + '显示最近 500 条，共 ' + entries.length + ' 条</div>';
     }
     container.innerHTML = html;
+    window.__log.perf('Render', 'renderLogPanel', { ms: +(performance.now() - t0).toFixed(2), entries: showCount, totalEntries: entries.length });
 }
 
 function bindLogPanelEvents() {
