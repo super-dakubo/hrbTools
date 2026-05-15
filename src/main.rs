@@ -176,6 +176,8 @@ struct AppConfig {
     minimize_to_tray: bool,
     #[serde(default = "default_true")]
     reminder_enabled: bool,
+    #[serde(default)]
+    holiday_data: Vec<HolidayYearConfig>,
 }
 
 fn default_theme() -> String { "system".to_string() }
@@ -198,6 +200,7 @@ impl Default for AppConfig {
             auto_start: false,
             minimize_to_tray: true,
             reminder_enabled: true,
+            holiday_data: vec![],
         }
     }
 }
@@ -243,9 +246,33 @@ struct ReminderConfig {
     #[serde(default)]
     datetime: String,
     #[serde(default)]
+    workday_time: Option<String>,  // "HH:MM"
+    #[serde(default)]
+    restday_time: Option<String>,  // "HH:MM"
+    #[serde(default)]
     sound: bool,
     #[serde(default)]
     day_mode: String,   // "fixed" | "last" | "second_last" | "third_last"，仅 monthly 有效
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct HolidayYearConfig {
+    #[serde(default)]
+    year: i32,
+    #[serde(default)]
+    holidays: Vec<HolidayPeriod>,
+    #[serde(default)]
+    makeup_days: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct HolidayPeriod {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    start: String,
+    #[serde(default)]
+    end: String,
 }
 
 // ==================== 备份信息 ====================
@@ -308,6 +335,22 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+                // 迁移旧格式: reminder.datetime → workday_time/restday_time
+                for todo in config.todos.iter_mut() {
+                    let needs_migrate = todo.reminder.as_ref().map_or(false, |r| {
+                        r.workday_time.is_none()
+                            && r.restday_time.is_none()
+                            && !r.datetime.is_empty()
+                            && r.datetime.len() >= 16
+                    });
+                    if needs_migrate && todo.repeat.is_some() {
+                        if let Some(ref mut rem) = todo.reminder {
+                            let time = rem.datetime[11..16].to_string();
+                            rem.workday_time = Some(time.clone());
+                            rem.restday_time = Some(time);
                         }
                     }
                 }
@@ -1237,7 +1280,6 @@ fn send_notification(_app: tauri::AppHandle, title: String, body: String) -> OpR
     let _ = notify_rust::Notification::new()
         .summary(&title)
         .body(&body)
-
         .show();
     OpResult { success: true, message: "已发送".to_string() }
 }
@@ -1390,51 +1432,132 @@ fn main() {
                 .build(app)?;
 
             let app_handle = app.handle().clone();
+
+            // 提醒线程调试日志辅助函数：写入应用日志目录
+            let write_log = |handle: &tauri::AppHandle, line: &str| {
+                if let Ok(app_dir) = handle.path().app_data_dir() {
+                    let log_dir = app_dir.join("logs");
+                    let _ = fs::create_dir_all(&log_dir);
+                    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                    let log_path = log_dir.join(format!("{}.log", today));
+                    if let Ok(mut file) = fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&log_path)
+                    {
+                        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+                        let _ = writeln!(file, "[{}][reminder] {}", ts, line);
+                        let _ = file.flush();
+                    }
+                }
+            };
+
+            write_log(&app_handle, "提醒线程启动");
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                     let config_path = match app_handle.path().app_data_dir() {
                         Ok(p) => p.join("config.json"),
-                        Err(_) => continue,
+                        Err(_) => {
+                            write_log(&app_handle, "获取 config_path 失败");
+                            continue;
+                        }
                     };
                     let json = match std::fs::read_to_string(&config_path) {
                         Ok(s) => s,
-                        Err(_) => continue,
+                        Err(_) => {
+                            write_log(&app_handle, &format!("读取 config.json 失败: {:?}", config_path));
+                            continue;
+                        }
                     };
                     let raw: serde_json::Value = match serde_json::from_str(&json) {
                         Ok(v) => v,
-                        Err(_) => continue,
+                        Err(_) => {
+                            write_log(&app_handle, "解析 JSON 失败");
+                            continue;
+                        }
                     };
                     let mut config: AppConfig = match serde_json::from_value(raw) {
                         Ok(c) => c,
-                        Err(_) => continue,
+                        Err(_) => {
+                            write_log(&app_handle, "反序列化 AppConfig 失败");
+                            continue;
+                        }
                     };
                     let now = chrono::Utc::now().timestamp_millis();
                     let mut changed = false;
-                    if !config.reminder_enabled { continue; }
+                    if !config.reminder_enabled {
+                        write_log(&app_handle, "reminder_enabled = false，跳过");
+                        continue;
+                    }
 
+                    write_log(&app_handle, &format!("线程运行中，待办数={}", config.todos.len()));
                     for todo in config.todos.iter_mut() {
-                        if todo.done { continue; }
-                        if todo.paused { continue; }
+                        if todo.done {
+                            write_log(&app_handle, &format!("跳过已完成的待办: '{}'", todo.text));
+                            continue;
+                        }
+                        if todo.paused {
+                            write_log(&app_handle, &format!("跳过已暂停的待办: '{}'", todo.text));
+                            continue;
+                        }
                         let reminder = match &todo.reminder {
                             Some(r) => r,
-                            None => continue,
+                            None => {
+                                write_log(&app_handle, &format!("待办 '{}' 无提醒设置", todo.text));
+                                continue;
+                            }
                         };
+                        write_log(&app_handle, &format!("检查: '{}' datetime='{}'", todo.text, reminder.datetime));
                         let reminder_dt = match chrono::NaiveDateTime::parse_from_str(
                             &reminder.datetime, "%Y-%m-%dT%H:%M"
                         ) {
                             Ok(dt) => dt,
-                            Err(_) => continue,
+                            Err(e) => {
+                                write_log(&app_handle, &format!("解析失败 '{}' : {:?}", reminder.datetime, e));
+                                continue;
+                            }
                         };
-                        let reminder_ts = reminder_dt.and_utc().timestamp_millis();
+                        let beijing_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+                        let reminder_ts = beijing_offset.from_local_datetime(&reminder_dt).unwrap().timestamp_millis();
+                        let now_local = chrono::Local::now().format("%Y-%m-%dT%H:%M");
+                        write_log(&app_handle, &format!("当前本地时间={}, 提醒时间={}, 差值={}s", now_local, reminder_dt.format("%Y-%m-%dT%H:%M"), (reminder_ts - now) / 1000));
                         if reminder_ts <= now {
+                            // 一次性提醒过时 >5 秒则不触发，保留提醒数据供 UI 显示
+                            if todo.repeat.is_none() && now - reminder_ts > 5000 {
+                                write_log(&app_handle, "一次性提醒已过时超过5秒，跳过触发以保留提醒数据");
+                                continue;
+                            }
                             let last = todo.last_notified.unwrap_or(0);
-                            if now - last < 60000 { continue; }
+                            if now - last < 60000 {
+                                write_log(&app_handle, &format!("60秒防重复，跳过 '{}'", todo.text));
+                                continue;
+                            }
+                            write_log(&app_handle, &format!("*** 触发提醒: '{}' ***", todo.text));
+                            write_log(&app_handle, "notify_rust.show() 调用");
                             let _ = notify_rust::Notification::new()
                                 .summary("HRB Tools")
                                 .body(&todo.text)
-                        
                                 .show();
+                            // 工具窗口置顶（代替弹窗）
+                            write_log(&app_handle, "窗口置顶");
+                            if let Some(w) = app_handle.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                            }
+                            write_log(&app_handle, "任务栏闪烁 + eval __onReminderFired");
+                            let safe_msg = format!("⏰ {}", todo.text.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n").replace('\r', "").replace('\t', "\\t"));
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                                let _ = window.eval(&format!(
+                                    r#"try{{window.__onReminderFired('{}')}}catch(e){{}}"#,
+                                    safe_msg
+                                ));
+                                write_log(&app_handle, "eval 完成");
+                            } else {
+                                write_log(&app_handle, "获取窗口失败！");
+                            }
                             todo.last_notified = Some(now);
                             changed = true;
                             // 重复任务自动推期
@@ -1483,17 +1606,29 @@ fn main() {
                                 }
                                 todo.reminder = Some(ReminderConfig {
                                     datetime: next_dt.format("%Y-%m-%dT%H:%M").to_string(),
+                                    workday_time: None,
+                                    restday_time: None,
                                     sound: reminder.sound,
                                     day_mode: reminder.day_mode.clone(),
                                 });
                                 adv_due(&mut todo.due_date);
+                            } else {
+                                // 一次性提醒：保留 reminder 数据（由过时防重和 last_notified 防重，不会重复触）
+                                // 不清除，UI 会展示为"已过期"
                             }
+                        } else {
+                            write_log(&app_handle, "提醒时间未到");
                         }
                     }
 
                     if changed {
                         if let Ok(json) = serde_json::to_string_pretty(&config) {
                             let _ = std::fs::write(&config_path, json);
+                            write_log(&app_handle, "配置已更新");
+                        }
+                        // 任务栏闪烁
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
                         }
                     }
                 }
