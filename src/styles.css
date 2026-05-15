@@ -1623,3 +1623,48 @@ button:disabled:hover { background: var(--accent); }
     font-size: 12px;
     color: var(--accent);
 }
+
+/* ==================== 提醒时间 details ==================== */
+.reminder-details {
+    font-size: 13px;
+}
+.reminder-details summary {
+    cursor: pointer;
+    padding: 4px 0;
+    user-select: none;
+}
+.reminder-details summary:focus {
+    outline: none;
+}
+.reminder-detail-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    margin-top: 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+}
+.reminder-time-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.reminder-time-label input[type="time"] {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text);
+}
+.reminder-off-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}

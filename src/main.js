@@ -1869,11 +1869,20 @@ function createNextRepeat(todo) {
         newTodo.due_date = d.toISOString().slice(0, 10);
     }
     if (newTodo.reminder && newTodo.reminder.datetime && todo.repeat) {
-        var r = new Date(newTodo.reminder.datetime);
-        if (todo.repeat === 'daily') r.setDate(r.getDate() + 1);
-        else if (todo.repeat === 'weekly') r.setDate(r.getDate() + 7);
-        else if (todo.repeat === 'monthly') r.setMonth(r.getMonth() + 1);
-        newTodo.reminder.datetime = r.toISOString().slice(0, 16);
+        if (todo.repeat === 'daily') {
+            var next = calculateNextReminderDate('daily',
+                newTodo.reminder.workday_time,
+                newTodo.reminder.restday_time);
+            if (next) newTodo.reminder.datetime = next;
+        } else if (todo.repeat === 'weekly') {
+            var r = new Date(newTodo.reminder.datetime);
+            r.setDate(r.getDate() + 7);
+            newTodo.reminder.datetime = r.toISOString().slice(0, 16);
+        } else if (todo.repeat === 'monthly') {
+            var r = new Date(newTodo.reminder.datetime);
+            r.setMonth(r.getMonth() + 1);
+            newTodo.reminder.datetime = r.toISOString().slice(0, 16);
+        }
     }
     newTodo.parent_id = todo.id;   // 记录关联，供取消完成时查找删除
     return newTodo;
@@ -1891,11 +1900,20 @@ function recalculateNextDue(todo) {
         else if (todo.repeat === 'monthly') next.setMonth(next.getMonth() + 1);
         todo.due_date = next.toISOString().slice(0, 10);
         if (todo.reminder && todo.reminder.datetime) {
-            var r = new Date(todo.reminder.datetime);
-            if (todo.repeat === 'daily') r.setDate(r.getDate() + 1);
-            else if (todo.repeat === 'weekly') r.setDate(r.getDate() + 7);
-            else if (todo.repeat === 'monthly') r.setMonth(r.getMonth() + 1);
-            todo.reminder.datetime = r.toISOString().slice(0, 16);
+            if (todo.repeat === 'daily') {
+                var next = calculateNextReminderDate('daily',
+                    todo.reminder.workday_time,
+                    todo.reminder.restday_time);
+                if (next) todo.reminder.datetime = next;
+            } else if (todo.repeat === 'weekly') {
+                var r = new Date(todo.reminder.datetime);
+                r.setDate(r.getDate() + 7);
+                todo.reminder.datetime = r.toISOString().slice(0, 16);
+            } else if (todo.repeat === 'monthly') {
+                var r = new Date(todo.reminder.datetime);
+                r.setMonth(r.getMonth() + 1);
+                todo.reminder.datetime = r.toISOString().slice(0, 16);
+            }
         }
     }
     // 到期日未过期 → 不动
@@ -1983,6 +2001,87 @@ function calculateNextReminder(repeat, options) {
     return '';
 }
 
+function getReminderSummary(todo) {
+    if (!todo.reminder) return '未设置';
+    var wd = todo.reminder.workday_time;
+    var rd = todo.reminder.restday_time;
+    if (wd && rd) {
+        if (wd === rd) return '每天 ' + wd;
+        return '工作日 ' + wd + ' / 休息日 ' + rd;
+    }
+    if (wd) return '工作日 ' + wd;
+    if (rd) return '休息日 ' + rd;
+    return '未设置';
+}
+
+function getDayType(date, holidayData) {
+    var mmdd = String(date.getMonth() + 1).padStart(2, '0') + String(date.getDate()).padStart(2, '0');
+    var year = date.getFullYear();
+    var holiday = null;
+    for (var i = 0; i < holidayData.length; i++) {
+        if (holidayData[i].year === year) { holiday = holidayData[i]; break; }
+    }
+
+    if (holiday) {
+        if (holiday.makeup_days.indexOf(mmdd) !== -1) return 'workday';
+        for (var j = 0; j < holiday.holidays.length; j++) {
+            var h = holiday.holidays[j];
+            if (h.start <= h.end) {
+                if (mmdd >= h.start && mmdd <= h.end) return 'restday';
+            } else {
+                // 跨年假期段
+                if (mmdd >= h.start || mmdd <= h.end) return 'restday';
+            }
+        }
+    }
+
+    var day = date.getDay();
+    if (day === 0 || day === 6) return 'restday';
+    return 'workday';
+}
+
+function calculateNextReminderDate(repeat, workdayTime, restdayTime) {
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var holidayData = currentConfig.holiday_data || [];
+
+    for (var d = 0; d < 60; d++) {
+        var checkDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        var dayType = getDayType(checkDate, holidayData);
+        var targetTime = dayType === 'workday' ? workdayTime : restdayTime;
+        if (!targetTime) continue;
+
+        var parts = targetTime.split(':');
+        var target = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate(),
+            parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+        if (d === 0 && target > now) return formatISOLocal(target);
+        if (d === 0) continue;
+        return formatISOLocal(target);
+    }
+    return '';
+}
+
+function updateReminderSummary() {
+    var el = document.getElementById('reminderSummaryText');
+    if (!el) return;
+    var wd = document.getElementById('editWorkdayTime');
+    var rd = document.getElementById('editRestdayTime');
+    var off = document.getElementById('editRestdayOff');
+    if (!wd || !rd) return;
+    var wdv = wd.value;
+    var rdv = off && off.checked ? null : (rd ? rd.value : null);
+    if (wdv && rdv) {
+        if (wdv === rdv) el.textContent = '每天 ' + wdv;
+        else el.textContent = '工作日 ' + wdv + ' / 休息日 ' + rdv;
+    } else if (wdv) {
+        el.textContent = '工作日 ' + wdv;
+    } else if (rdv) {
+        el.textContent = '休息日 ' + rdv;
+    } else {
+        el.textContent = '未设置';
+    }
+}
+
 // 编辑弹窗
 function openTodoEditModal(id) {
     var isNew = id === null;
@@ -2066,7 +2165,16 @@ function openTodoEditModal(id) {
                 // 不重复
                 + '<input type="datetime-local" id="editReminderOnce" class="ri ri-once" value="' + (todo.reminder && !todo.repeat ? todo.reminder.datetime : '') + '">'
                 // 每天
-                + '<input type="time" id="editReminderDaily" class="ri ri-daily" value="' + (todo.reminder && todo.repeat === 'daily' ? todo.reminder.datetime.slice(11, 16) : '') + '" style="display:none">'
+                + '<span class="ri ri-daily" style="display:none">'
+                    + '<details class="reminder-details">'
+                    + '<summary class="reminder-summary">⏰ <span id="reminderSummaryText">' + getReminderSummary(todo) + '</span></summary>'
+                    + '<div class="reminder-detail-fields">'
+                    + '<label class="reminder-time-label">工作日 <input type="time" id="editWorkdayTime" value="' + (todo.reminder && todo.repeat === 'daily' && todo.reminder.workday_time ? todo.reminder.workday_time : '') + '"></label>'
+                    + '<label class="reminder-time-label">休息日 <input type="time" id="editRestdayTime" value="' + (todo.reminder && todo.repeat === 'daily' && todo.reminder.restday_time ? todo.reminder.restday_time : '') + '"></label>'
+                    + '<label class="reminder-off-label"><input type="checkbox" id="editRestdayOff"' + (todo.reminder && todo.repeat === 'daily' && !todo.reminder.restday_time && todo.reminder.workday_time ? ' checked' : '') + '> 休息日不提醒</label>'
+                    + '</div>'
+                    + '</details>'
+                + '</span>'
                 // 每周
                 + '<span class="ri ri-weekly" style="display:none">'
                     + '<select id="editReminderWeekday">'
@@ -2165,10 +2273,14 @@ function openTodoEditModal(id) {
         if (repeatType === '' || repeatType === null) {
             reminderVal = overlay.querySelector('#editReminderOnce').value;
         } else if (repeatType === 'daily') {
-            var timeVal = overlay.querySelector('#editReminderDaily').value;
-            if (timeVal) {
-                var parts = timeVal.split(':');
-                reminderVal = calculateNextReminder('daily', { hours: parseInt(parts[0], 10), minutes: parseInt(parts[1], 10) });
+            var wdVal = overlay.querySelector('#editWorkdayTime').value;
+            var rdVal = overlay.querySelector('#editRestdayTime').value;
+            var rdOff = overlay.querySelector('#editRestdayOff').checked;
+            if (wdVal || rdVal) {
+                var nextDate = calculateNextReminderDate('daily', wdVal || null, rdOff ? null : (rdVal || null));
+                if (nextDate) {
+                    reminderVal = nextDate;
+                }
             }
         } else if (repeatType === 'weekly') {
             var weekday = parseInt(overlay.querySelector('#editReminderWeekday').value, 10);
@@ -2220,7 +2332,19 @@ function openTodoEditModal(id) {
             todo.tags = fields.tags;
             todo.notes = fields.notes;
             todo.repeat = fields.repeat;
-            todo.reminder = fields.reminder;
+            if (fields.reminder) {
+                if (!todo.reminder) {
+                    todo.reminder = { datetime: fields.reminder, sound: true, day_mode: 'fixed', workday_time: null, restday_time: null };
+                } else {
+                    todo.reminder.datetime = fields.reminder;
+                }
+                if (fields.repeat === 'daily') {
+                    todo.reminder.workday_time = document.getElementById('editWorkdayTime').value || null;
+                    todo.reminder.restday_time = document.getElementById('editRestdayOff').checked ? null : (document.getElementById('editRestdayTime').value || null);
+                }
+            } else {
+                todo.reminder = null;
+            }
             saveConfigToBackend();
             renderTodos();
         }, 300);
@@ -2239,11 +2363,25 @@ function openTodoEditModal(id) {
     overlay.querySelector('#editNotes').addEventListener('input', autoSave);
     // 提醒输入控件变化
     overlay.querySelector('#editReminderOnce').addEventListener('change', autoSave);
-    overlay.querySelector('#editReminderDaily').addEventListener('change', autoSave);
     overlay.querySelector('#editReminderWeekday').addEventListener('change', autoSave);
     overlay.querySelector('#editReminderWeeklyTime').addEventListener('change', autoSave);
     overlay.querySelector('#editReminderMonthDay').addEventListener('change', autoSave);
     overlay.querySelector('#editReminderMonthlyTime').addEventListener('change', autoSave);
+    var editWorkdayTime = overlay.querySelector('#editWorkdayTime');
+    var editRestdayTime = overlay.querySelector('#editRestdayTime');
+    var editRestdayOff = overlay.querySelector('#editRestdayOff');
+    if (editWorkdayTime) editWorkdayTime.addEventListener('change', function() {
+        updateReminderSummary();
+        autoSave();
+    });
+    if (editRestdayTime) editRestdayTime.addEventListener('change', function() {
+        updateReminderSummary();
+        autoSave();
+    });
+    if (editRestdayOff) editRestdayOff.addEventListener('change', function() {
+        updateReminderSummary();
+        autoSave();
+    });
 }
 
 // ==================== 启动 ====================
