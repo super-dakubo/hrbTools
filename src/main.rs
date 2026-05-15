@@ -275,6 +275,31 @@ struct HolidayPeriod {
     end: String,
 }
 
+// ==================== 节假日判定 ====================
+
+fn get_day_type(date: &chrono::NaiveDate, holiday: Option<&HolidayYearConfig>) -> &'static str {
+    let mmdd = format!("{:02}{:02}", date.month(), date.day());
+    let weekday = date.weekday().num_days_from_monday(); // 0=Mon..6=Sun
+
+    if let Some(h) = holiday {
+        // 补班日（周末上班）→ 工作日
+        if h.makeup_days.contains(&mmdd) {
+            return "workday";
+        }
+        // 在假期段内 → 休息日
+        if h.holidays.iter().any(|p| mmdd >= p.start && mmdd <= p.end) {
+            return "restday";
+        }
+    }
+
+    // 周末且非补班 → 休息日
+    if weekday >= 5 { // 周六=5, 周日=6
+        return "restday";
+    }
+
+    "workday"
+}
+
 // ==================== 备份信息 ====================
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -491,6 +516,22 @@ fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
     OpResult {
         success: true,
         message: "配置已保存".to_string(),
+    }
+}
+
+#[tauri::command]
+fn get_holiday_data(app: tauri::AppHandle) -> Vec<HolidayYearConfig> {
+    load_config(&app).holiday_data
+}
+
+#[tauri::command]
+fn save_holiday_data(app: tauri::AppHandle, data: Vec<HolidayYearConfig>) -> OpResult {
+    let mut config = load_config(&app);
+    config.holiday_data = data;
+    save_config(&app, &config);
+    OpResult {
+        success: true,
+        message: "节假日数据已保存".to_string(),
     }
 }
 
@@ -1643,6 +1684,8 @@ fn main() {
             convert_to_datetime,
             get_config,
             set_config,
+            get_holiday_data,
+            save_holiday_data,
             pick_file,
             pick_directory,
             create_backup,
