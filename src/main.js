@@ -1502,9 +1502,6 @@ function parseAndPreviewHolidayJSON(text, year) {
 
             if (!mmddRe.test(h.start)) errors.push('假期 "' + (h.name || i) + '" 开始日期格式错误: ' + h.start);
             if (!mmddRe.test(h.end)) errors.push('假期 "' + (h.name || i) + '" 结束日期格式错误: ' + h.end);
-            if (mmddRe.test(h.start) && mmddRe.test(h.end) && h.start > h.end) {
-                errors.push('假期 "' + h.name + '" 结束日期早于开始日期');
-            }
             if (mmddRe.test(h.start) && mmddRe.test(h.end)) {
                 holidayRanges.push({ name: h.name, start: h.start, end: h.end });
             }
