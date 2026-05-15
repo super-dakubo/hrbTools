@@ -478,6 +478,13 @@ async function loadConfig() {
     var config = window.__configPromise ? await window.__configPromise : null;
     if (!config) config = await invoke('get_config');
     currentConfig = config;
+    // 迁移旧 reminder.datetime → workday_time/restday_time（仅重复待办）
+    (currentConfig.todos || []).forEach(function(t) {
+        if (t.reminder && !t.reminder.workday_time && !t.reminder.restday_time && t.reminder.datetime && t.repeat) {
+            t.reminder.workday_time = t.reminder.datetime.slice(11, 16);
+            t.reminder.restday_time = t.reminder.workday_time;
+        }
+    });
     var tIpc = performance.now();
     applyTheme(currentConfig.theme || 'system');
     updateSettingsDisplay();
