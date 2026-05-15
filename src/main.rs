@@ -1558,20 +1558,42 @@ fn main() {
                                 continue;
                             }
                         };
-                        write_log(&app_handle, &format!("检查: '{}' datetime='{}'", todo.text, reminder.datetime));
+
+                        // 根据 day_type 获取当日提醒时间
+                        let now_local = chrono::Local::now();
+                        let today = now_local.date_naive();
+                        let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
+                        let day_type = get_day_type(&today, holiday_year);
+
+                        let target_time = if day_type == "workday" {
+                            reminder.workday_time.as_deref()
+                        } else {
+                            reminder.restday_time.as_deref()
+                        };
+
+                        let target_time = match target_time {
+                            Some(t) => t,
+                            None => {
+                                write_log(&app_handle, &format!("待办 '{}' 今日({})无对应提醒时间", todo.text, day_type));
+                                continue;
+                            }
+                        };
+
+                        let reminder_dt_str = format!("{}T{}", today.format("%Y-%m-%d"), target_time);
+                        write_log(&app_handle, &format!("检查: '{}' day_type={} target={}", todo.text, day_type, reminder_dt_str));
+
                         let reminder_dt = match chrono::NaiveDateTime::parse_from_str(
-                            &reminder.datetime, "%Y-%m-%dT%H:%M"
+                            &reminder_dt_str, "%Y-%m-%dT%H:%M"
                         ) {
                             Ok(dt) => dt,
                             Err(e) => {
-                                write_log(&app_handle, &format!("解析失败 '{}' : {:?}", reminder.datetime, e));
+                                write_log(&app_handle, &format!("解析提醒时间失败 '{}' : {:?}", reminder_dt_str, e));
                                 continue;
                             }
                         };
                         let beijing_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
                         let reminder_ts = beijing_offset.from_local_datetime(&reminder_dt).unwrap().timestamp_millis();
-                        let now_local = chrono::Local::now().format("%Y-%m-%dT%H:%M");
-                        write_log(&app_handle, &format!("当前本地时间={}, 提醒时间={}, 差值={}s", now_local, reminder_dt.format("%Y-%m-%dT%H:%M"), (reminder_ts - now) / 1000));
+                        write_log(&app_handle, &format!("提醒时间={}, 差值={}s", reminder_dt.format("%Y-%m-%dT%H:%M"), (reminder_ts - now) / 1000));
                         if reminder_ts <= now {
                             // 一次性提醒过时 >5 秒则不触发，保留提醒数据供 UI 显示
                             if todo.repeat.is_none() && now - reminder_ts > 5000 {
@@ -1617,7 +1639,19 @@ fn main() {
                                     if let &mut Some(ref due) = d {
                                         if let Ok(due_d) = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d") {
                                             let new_due = match repeat.as_str() {
-                                                "daily" => due_d + chrono::Days::new(1),
+                                                "daily" => {
+                                                    let mut next = due_d + chrono::Days::new(1);
+                                                    let next_holiday = config.holiday_data.iter().find(|h| h.year == next.year());
+                                                    loop {
+                                                        let nt = get_day_type(&next, next_holiday);
+                                                        let nt_time = if nt == "workday" { &reminder.workday_time } else { &reminder.restday_time };
+                                                        if nt_time.is_some() {
+                                                            break;
+                                                        }
+                                                        next = next + chrono::Days::new(1);
+                                                    }
+                                                    next
+                                                }
                                                 "weekly" => due_d + chrono::Days::new(7),
                                                 "monthly" => due_d + chrono::Months::new(1),
                                                 _ => due_d,
@@ -1627,7 +1661,25 @@ fn main() {
                                     }
                                 };
                                 match repeat.as_str() {
-                                    "daily" => next_dt += chrono::Duration::days(1),
+                                    "daily" => {
+                                        // 推进到有对应提醒时间的下一天
+                                        let mut next_day = next_dt.date() + chrono::Days::new(1);
+                                        let next_holiday = config.holiday_data.iter().find(|h| h.year == next_day.year());
+                                        loop {
+                                            let next_type = get_day_type(&next_day, next_holiday);
+                                            let next_time = if next_type == "workday" { &reminder.workday_time } else { &reminder.restday_time };
+                                            if let Some(t) = next_time {
+                                                let parts: Vec<&str> = t.split(':').collect();
+                                                if parts.len() == 2 {
+                                                    if let (Ok(h), Ok(m)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                                                        next_dt = chrono::NaiveDateTime::new(next_day, chrono::NaiveTime::from_hms_opt(h, m, 0).unwrap());
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            next_day = next_day + chrono::Days::new(1);
+                                        }
+                                    }
                                     "weekly" => next_dt += chrono::Duration::days(7),
                                     "monthly" => {
                                         let day_mode = reminder.day_mode.as_str();
@@ -1654,14 +1706,14 @@ fn main() {
                                     }
                                     _ => {}
                                 }
+                                adv_due(&mut todo.due_date);
                                 todo.reminder = Some(ReminderConfig {
                                     datetime: next_dt.format("%Y-%m-%dT%H:%M").to_string(),
-                                    workday_time: None,
-                                    restday_time: None,
+                                    workday_time: reminder.workday_time.clone(),
+                                    restday_time: reminder.restday_time.clone(),
                                     sound: reminder.sound,
                                     day_mode: reminder.day_mode.clone(),
                                 });
-                                adv_due(&mut todo.due_date);
                             } else {
                                 // 一次性提醒：保留 reminder 数据（由过时防重和 last_notified 防重，不会重复触）
                                 // 不清除，UI 会展示为"已过期"
