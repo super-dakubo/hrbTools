@@ -1386,8 +1386,6 @@ function updateSettingsDisplay() {
 
 // ==================== 节假日管理 ====================
 
-let _editingHolidayYear = null;
-
 function renderHolidayYears() {
     var list = document.getElementById('holidayYearsList');
     var years = currentConfig.holiday_data || [];
@@ -1430,7 +1428,6 @@ function getTemplateJSON(year) {
 }
 
 function openHolidayEditor(year) {
-    _editingHolidayYear = year;
     var editor = document.getElementById('holidayEditor');
     var existing = (currentConfig.holiday_data || []).find(function(h) { return h.year === year; });
     var defaultText = existing ? JSON.stringify(existing, null, 2) : '';
