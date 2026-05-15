@@ -286,8 +286,14 @@ fn get_day_type(date: &chrono::NaiveDate, holiday: Option<&HolidayYearConfig>) -
         if h.makeup_days.contains(&mmdd) {
             return "workday";
         }
-        // 在假期段内 → 休息日
-        if h.holidays.iter().any(|p| mmdd >= p.start && mmdd <= p.end) {
+        // 在假期段内 → 休息日（跨年段如 1228-0102 也算在内）
+        if h.holidays.iter().any(|p| {
+            if p.start.as_str() <= p.end.as_str() {
+                mmdd >= p.start && mmdd <= p.end
+            } else {
+                mmdd >= p.start || mmdd <= p.end
+            }
+        }) {
             return "restday";
         }
     }
