@@ -1642,6 +1642,7 @@ fn main() {
                                                 "daily" => {
                                                     let mut next = due_d + chrono::Days::new(1);
                                                     let next_holiday = config.holiday_data.iter().find(|h| h.year == next.year());
+                                                    let mut max_days = 366i32;
                                                     loop {
                                                         let nt = get_day_type(&next, next_holiday);
                                                         let nt_time = if nt == "workday" { &reminder.workday_time } else { &reminder.restday_time };
@@ -1649,6 +1650,11 @@ fn main() {
                                                             break;
                                                         }
                                                         next = next + chrono::Days::new(1);
+                                                        max_days -= 1;
+                                                        if max_days <= 0 {
+                                                            write_log(&app_handle, &format!("待办 '{}' 截止日期推进 366 天无匹配", todo.text));
+                                                            break;
+                                                        }
                                                     }
                                                     next
                                                 }
@@ -1665,19 +1671,26 @@ fn main() {
                                         // 推进到有对应提醒时间的下一天
                                         let mut next_day = next_dt.date() + chrono::Days::new(1);
                                         let next_holiday = config.holiday_data.iter().find(|h| h.year == next_day.year());
+                                        let mut max_days = 366i32;
                                         loop {
                                             let next_type = get_day_type(&next_day, next_holiday);
                                             let next_time = if next_type == "workday" { &reminder.workday_time } else { &reminder.restday_time };
                                             if let Some(t) = next_time {
-                                                let parts: Vec<&str> = t.split(':').collect();
-                                                if parts.len() == 2 {
-                                                    if let (Ok(h), Ok(m)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
-                                                        next_dt = chrono::NaiveDateTime::new(next_day, chrono::NaiveTime::from_hms_opt(h, m, 0).unwrap());
-                                                        break;
+                                                if let Some((h_str, m_str)) = t.split_once(':') {
+                                                    if let (Ok(h), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
+                                                        if let Some(time) = chrono::NaiveTime::from_hms_opt(h, m, 0) {
+                                                            next_dt = chrono::NaiveDateTime::new(next_day, time);
+                                                            break;
+                                                        }
                                                     }
                                                 }
                                             }
                                             next_day = next_day + chrono::Days::new(1);
+                                            max_days -= 1;
+                                            if max_days <= 0 {
+                                                write_log(&app_handle, &format!("待办 '{}' 在 366 天内无匹配提醒日，跳过", todo.text));
+                                                break;
+                                            }
                                         }
                                     }
                                     "weekly" => next_dt += chrono::Duration::days(7),
