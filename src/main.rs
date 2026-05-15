@@ -346,9 +346,12 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
                             && !r.datetime.is_empty()
                             && r.datetime.len() >= 16
                     });
+                    // 仅迁移重复待办（repeat.is_some() 如 daily/weekly）：
+                    // 重复待办的触发时间取决于当前是工作日还是休息日，需要 workday_time/restday_time 字段。
+                    // 非重复的一次性待办使用固定的 reminder.datetime 就够了，不需迁移。
                     if needs_migrate && todo.repeat.is_some() {
                         if let Some(ref mut rem) = todo.reminder {
-                            let time = rem.datetime[11..16].to_string();
+                            let time = rem.datetime.get(11..16).unwrap_or("00:00").to_string();
                             rem.workday_time = Some(time.clone());
                             rem.restday_time = Some(time);
                         }
