@@ -1446,7 +1446,7 @@ function openHolidayEditor(year) {
         + '<strong>' + year + '年 节假日配置</strong>'
         + '<button class="btn-small" id="holidayCopyTemplate">复制模板</button>'
         + '</div>'
-        + '<textarea id="holidayJsonInput" class="holiday-json-input" placeholder="粘贴 JSON（粘贴后自动解析）">'
+        + '<textarea id="holidayJsonInput" class="holiday-json-input" placeholder="编辑 JSON 配置">'
         + escapeHtml(defaultText) + '</textarea>'
         + '<div id="holidayPreview" style="margin-top:8px;"></div>'
         + '<div style="margin-top:8px;display:flex;gap:8px;">'
@@ -2346,8 +2346,8 @@ function openTodoEditModal(id) {
                     todo.reminder.datetime = fields.reminder;
                 }
                 if (fields.repeat === 'daily') {
-                    todo.reminder.workday_time = document.getElementById('editWorkdayTime').value || null;
-                    todo.reminder.restday_time = document.getElementById('editRestdayOff').checked ? null : (document.getElementById('editRestdayTime').value || null);
+                    todo.reminder.workday_time = overlay.querySelector('#editWorkdayTime').value || null;
+                    todo.reminder.restday_time = overlay.querySelector('#editRestdayOff').checked ? null : (overlay.querySelector('#editRestdayTime').value || null);
                 }
             } else {
                 todo.reminder = null;
