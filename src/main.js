@@ -1,4 +1,3 @@
-// 直接使用 Tauri 内部 IPC
 const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args);
 
 // ==================== 状态 ====================
@@ -474,7 +473,12 @@ closeBtn.addEventListener('click', () => invoke('window_close'));
 // ==================== 配置管理 ====================
 
 async function loadConfig() {
-    currentConfig = await invoke('get_config');
+    var tStartup = performance.now();
+    // 使用头部脚本预热的 IPC 调用（冷启动已在 HTML 解析阶段完成）
+    var config = window.__configPromise ? await window.__configPromise : null;
+    if (!config) config = await invoke('get_config');
+    currentConfig = config;
+    var tIpc = performance.now();
     applyTheme(currentConfig.theme || 'system');
     updateSettingsDisplay();
     // 初始化 Tab
@@ -482,8 +486,10 @@ async function loadConfig() {
         ? currentConfig.tab_order : DEFAULT_TAB_ORDER;
     currentTab = order[0];
     renderTabBar();
+    var tBar = performance.now();
     switchTab(currentTab);
     renderTimezoneSets();
+    var tTz = performance.now();
     await initTimezoneDefaults();
     if (currentConfig.games.length > 0) {
         selectedGameId = currentConfig.games[0].id;
@@ -496,6 +502,22 @@ async function loadConfig() {
     restoreFilePaths();
     await refreshCurrentHashes();
     refreshBackupList();
+
+    if (window.__log && window.__log.perf) {
+        window.__log.perf('Startup', 'loadConfig IPC', { ms: +(tIpc - tStartup).toFixed(2) });
+        window.__log.perf('Startup', 'loadConfig tabBar', { ms: +(tBar - tIpc).toFixed(2) });
+        window.__log.perf('Startup', 'loadConfig tz', { ms: +(tTz - tBar).toFixed(2) });
+        window.__log.perf('Startup', 'loadConfig total', { ms: +(performance.now() - tStartup).toFixed(2) });
+    }
+
+    // 在第一个面板底部显示启动耗时
+    var startupTiming = document.getElementById('startupTiming');
+    if (startupTiming) {
+        var totalMs = +(performance.now() - tStartup).toFixed(1);
+        var ipcMs = +(tIpc - tStartup).toFixed(1);
+        var renderMs = +(tBar - tIpc).toFixed(1);
+        startupTiming.textContent = '启动: ' + totalMs + 'ms (IPC: ' + ipcMs + 'ms, 渲染: ' + renderMs + 'ms)';
+    }
 }
 
 async function saveConfigToBackend() {
@@ -1359,7 +1381,203 @@ function updateSettingsDisplay() {
     if (reminderToggle) {
         reminderToggle.textContent = currentConfig.reminder_enabled !== false ? '开启' : '关闭';
     }
+    renderHolidayYears();
 }
+
+// ==================== 节假日管理 ====================
+
+let _editingHolidayYear = null;
+
+function renderHolidayYears() {
+    var list = document.getElementById('holidayYearsList');
+    var years = currentConfig.holiday_data || [];
+    if (years.length === 0) {
+        list.innerHTML = '<span class="settings-hint">暂未配置</span>';
+        return;
+    }
+    list.innerHTML = years.map(function(h) {
+        return '<div class="holiday-year-row">'
+            + '<span>' + h.year + '年</span>'
+            + '<button class="btn-small holiday-edit-btn" data-year="' + h.year + '">编辑</button>'
+            + '<button class="btn-small holiday-del-btn" data-year="' + h.year + '">删除</button>'
+            + '</div>';
+    }).join('');
+
+    list.querySelectorAll('.holiday-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            openHolidayEditor(parseInt(this.dataset.year, 10));
+        });
+    });
+    list.querySelectorAll('.holiday-del-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var year = parseInt(this.dataset.year, 10);
+            currentConfig.holiday_data = (currentConfig.holiday_data || []).filter(function(h) { return h.year !== year; });
+            await saveConfigToBackend();
+            renderHolidayYears();
+            document.getElementById('holidayEditor').style.display = 'none';
+        });
+    });
+}
+
+function getTemplateJSON(year) {
+    return JSON.stringify({
+        year: year,
+        holidays: [
+            { name: '元旦', start: '0101', end: '0103' }
+        ],
+        makeup_days: ['0114']
+    }, null, 2);
+}
+
+function openHolidayEditor(year) {
+    _editingHolidayYear = year;
+    var editor = document.getElementById('holidayEditor');
+    var existing = (currentConfig.holiday_data || []).find(function(h) { return h.year === year; });
+    var defaultText = existing ? JSON.stringify(existing, null, 2) : '';
+
+    editor.style.display = 'block';
+    editor.innerHTML = ''
+        + '<div class="holiday-editor-panel">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        + '<strong>' + year + '年 节假日配置</strong>'
+        + '<button class="btn-small" id="holidayCopyTemplate">复制模板</button>'
+        + '</div>'
+        + '<textarea id="holidayJsonInput" class="holiday-json-input" placeholder="粘贴 JSON（粘贴后自动解析）">'
+        + escapeHtml(defaultText) + '</textarea>'
+        + '<div id="holidayPreview" style="margin-top:8px;"></div>'
+        + '<div style="margin-top:8px;display:flex;gap:8px;">'
+        + '<button class="btn-small" id="holidaySaveBtn" style="display:none;">确认保存</button>'
+        + '<button class="btn-small" id="holidayCancelBtn">取消</button>'
+        + '</div>'
+        + '</div>';
+
+    document.getElementById('holidayCopyTemplate').addEventListener('click', function() {
+        navigator.clipboard.writeText(getTemplateJSON(year)).catch(function() {
+            alert('复制失败，请手动复制');
+        });
+    });
+
+    document.getElementById('holidayJsonInput').addEventListener('input', function() {
+        parseAndPreviewHolidayJSON(this.value, year);
+    });
+
+    document.getElementById('holidayCancelBtn').addEventListener('click', function() {
+        editor.style.display = 'none';
+    });
+
+    if (defaultText) {
+        parseAndPreviewHolidayJSON(defaultText, year);
+    }
+}
+
+function parseAndPreviewHolidayJSON(text, year) {
+    var preview = document.getElementById('holidayPreview');
+    if (!text.trim()) {
+        preview.innerHTML = '';
+        document.getElementById('holidaySaveBtn').style.display = 'none';
+        return;
+    }
+
+    var data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        preview.innerHTML = '<div class="holiday-error">⛔ JSON 格式错误: ' + escapeHtml(e.message) + '</div>';
+        document.getElementById('holidaySaveBtn').style.display = 'none';
+        return;
+    }
+
+    var errors = [];
+    if (!data.year || data.year < 2000 || data.year > 2099) errors.push('年份无效，需在 2000-2099 之间');
+    if (data.year !== year) errors.push('年份不匹配，期望 ' + year + ' 但 JSON 中是 ' + data.year);
+
+    if (!Array.isArray(data.holidays)) errors.push('holidays 必须是数组');
+    if (!Array.isArray(data.makeup_days)) errors.push('makeup_days 必须是数组');
+
+    var mmddRe = /^(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
+    var holidayNames = [];
+    var holidayRanges = [];
+    if (Array.isArray(data.holidays)) {
+        data.holidays.forEach(function(h, i) {
+            if (!h.name) errors.push('第 ' + (i+1) + ' 个假期缺少 name');
+            else if (holidayNames.indexOf(h.name) !== -1) errors.push('假期名重复: ' + h.name);
+            else holidayNames.push(h.name);
+
+            if (!mmddRe.test(h.start)) errors.push('假期 "' + (h.name || i) + '" 开始日期格式错误: ' + h.start);
+            if (!mmddRe.test(h.end)) errors.push('假期 "' + (h.name || i) + '" 结束日期格式错误: ' + h.end);
+            if (mmddRe.test(h.start) && mmddRe.test(h.end) && h.start > h.end) {
+                errors.push('假期 "' + h.name + '" 结束日期早于开始日期');
+            }
+            if (mmddRe.test(h.start) && mmddRe.test(h.end)) {
+                holidayRanges.push({ name: h.name, start: h.start, end: h.end });
+            }
+        });
+    }
+
+    for (var i = 0; i < holidayRanges.length; i++) {
+        for (var j = i + 1; j < holidayRanges.length; j++) {
+            if (holidayRanges[i].start <= holidayRanges[j].end && holidayRanges[j].start <= holidayRanges[i].end) {
+                errors.push('假期重叠: "' + holidayRanges[i].name + '" 与 "' + holidayRanges[j].name + '"');
+            }
+        }
+    }
+
+    var makeupSet = {};
+    if (Array.isArray(data.makeup_days)) {
+        data.makeup_days.forEach(function(d, i) {
+            if (!mmddRe.test(d)) errors.push('补班日格式错误: ' + d);
+            if (makeupSet[d]) errors.push('补班日重复: ' + d);
+            else makeupSet[d] = true;
+        });
+    }
+
+    if (errors.length > 0) {
+        preview.innerHTML = '<div class="holiday-error">⛔ ' + errors.map(function(e) { return escapeHtml(e); }).join('<br>') + '</div>';
+        document.getElementById('holidaySaveBtn').style.display = 'none';
+        return;
+    }
+
+    var holidayRows = data.holidays.map(function(h) {
+        return '<tr><td>' + escapeHtml(h.name) + '</td><td>' + h.start.slice(0,2) + '/' + h.start.slice(2) + '</td><td>' + h.end.slice(0,2) + '/' + h.end.slice(2) + '</td></tr>';
+    }).join('');
+    var makeupChips = data.makeup_days.map(function(d) {
+        return '<span class="makeup-chip">' + d.slice(0,2) + '/' + d.slice(2) + '</span>';
+    }).join('');
+
+    preview.innerHTML = '<div class="holiday-preview">'
+        + '<div class="holiday-preview-title">' + data.year + ' 年节假日配置</div>'
+        + (holidayRows ? '<table class="holiday-table"><tr><th>节日</th><th>开始</th><th>结束</th></tr>' + holidayRows + '</table>' : '')
+        + (makeupChips ? '<div class="holiday-makeup-section"><div class="holiday-preview-subtitle">补班日</div><div class="makeup-chips">' + makeupChips + '</div></div>' : '')
+        + '</div>';
+
+    var saveBtn = document.getElementById('holidaySaveBtn');
+    saveBtn.style.display = '';
+    // Remove old click handler before adding new one to prevent duplicates
+    var newSaveBtn = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+    newSaveBtn.addEventListener('click', async function() {
+        var list = currentConfig.holiday_data || [];
+        var idx = list.findIndex(function(h) { return h.year === data.year; });
+        if (idx !== -1) list[idx] = data;
+        else list.push(data);
+        currentConfig.holiday_data = list;
+        await saveConfigToBackend();
+        renderHolidayYears();
+        document.getElementById('holidayEditor').style.display = 'none';
+        window.__log.info('Holiday', data.year + '年节假日配置已保存');
+    });
+}
+
+// 添加节假日按钮
+document.getElementById('holidayAddBtn').addEventListener('click', function() {
+    var year = parseInt(document.getElementById('holidayYearSelect').value, 10);
+    var exists = (currentConfig.holiday_data || []).some(function(h) { return h.year === year; });
+    if (exists) {
+        alert('该年份已配置，请编辑');
+        return;
+    }
+    openHolidayEditor(year);
+});
 
 // ==================== 按钮防重复 ====================
 
@@ -1720,7 +1938,6 @@ function calculateNextReminder(repeat, options) {
     }
 
     if (repeat === 'weekly') {
-        // options.weekday: 1=周一 ... 7=周日
         var jsTarget = options.weekday === 7 ? 0 : options.weekday;
         var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
         var daysUntil = (jsTarget - now.getDay() + 7) % 7;
@@ -1814,7 +2031,10 @@ function openTodoEditModal(id) {
     var overlay = document.createElement('div');
     overlay.className = 'todo-edit-overlay';
     overlay.innerHTML = '<div class="todo-edit-modal">'
-        + '<div class="todo-edit-title">' + (isNew ? '新建待办' : '编辑待办') + '</div>'
+        + '<div class="todo-edit-header">'
+            + '<div class="todo-edit-title">' + (isNew ? '新建待办' : '编辑待办') + '</div>'
+            + '<button class="todo-edit-close" id="editCloseBtn">&times;</button>'
+        + '</div>'
 
         + '<div class="todo-edit-field">'
             + '<label>内容</label>'
@@ -1882,11 +2102,6 @@ function openTodoEditModal(id) {
                 + '</span>'
             + '</div>'
         + '</div>'
-
-        + '<div class="todo-edit-actions">'
-            + '<button class="btn-small" id="editCancelBtn">取消</button>'
-            + '<button id="editSaveBtn">保存</button>'
-        + '</div>'
     + '</div>';
 
     document.querySelector('.container').appendChild(overlay);
@@ -1894,7 +2109,7 @@ function openTodoEditModal(id) {
     // 编辑已有待办：恢复每周/每月的选择值
     if (todo.reminder && todo.repeat === 'weekly') {
         var d = new Date(todo.reminder.datetime);
-        var weekday = d.getDay() === 0 ? 7 : d.getDay(); // JS周日=0 → 我们的周日=7
+        var weekday = d.getDay() === 0 ? 7 : d.getDay();
         overlay.querySelector('#editReminderWeekday').value = String(weekday);
         overlay.querySelector('#editReminderWeeklyTime').value = todo.reminder.datetime.slice(11, 16);
     }
@@ -1909,14 +2124,6 @@ function openTodoEditModal(id) {
         }
         overlay.querySelector('#editReminderMonthlyTime').value = timeVal;
     }
-
-    // 优先级切换
-    overlay.querySelectorAll('.todo-priority-picker button').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            overlay.querySelectorAll('.todo-priority-picker button').forEach(function(b) { b.classList.remove('active'); });
-            this.classList.add('active');
-        });
-    });
 
     // 重复类型切换 → 切换提醒输入控件
     function switchReminderInput(repeatVal) {
@@ -1934,46 +2141,34 @@ function openTodoEditModal(id) {
     var repeatSelect = overlay.querySelector('#editRepeat');
     repeatSelect.addEventListener('change', function() {
         switchReminderInput(this.value || null);
+        autoSave();
     });
     switchReminderInput(repeatSelect.value || null); // 初始化状态
 
-    overlay.querySelector('#editCancelBtn').addEventListener('click', function() { overlay.remove(); });
-
-    overlay.querySelector('#editSaveBtn').addEventListener('click', function() {
-        var newText = overlay.querySelector('#editText').value.trim();
-        if (!newText) { alert('内容不能为空'); return; }
-
-        if (isNew) {
-            todo = {
-                id: crypto.randomUUID(),
-                text: newText,
-                done: false,
-                priority: 1,
-                due_date: null,
-                tags: [],
-                notes: '',
-                reminder: null,
-                repeat: null,
-                sort_order: currentConfig.todos.length,
-                created_at: new Date().toISOString().slice(0, 16),
-                last_notified: null,
-                paused: false,
-            };
-            currentConfig.todos.push(todo);
-        } else {
-            todo.text = newText;
+    // ─── 关闭 ───
+    function closeModal() {
+        // 新待办且内容为空 → 从数组清理（防止自动保存了空内容）
+        if (isNew && todo.id && !overlay.querySelector('#editText').value.trim()) {
+            var idx = currentConfig.todos.indexOf(todo);
+            if (idx !== -1) currentConfig.todos.splice(idx, 1);
+            saveConfigToBackend();
+            renderTodos();
         }
+        overlay.remove();
+    }
+    overlay.querySelector('#editCloseBtn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+
+    // ─── 自动保存（每项修改后 300ms 防抖写入配置） ───
+    var _saveTimer = null;
+    function collectFields() {
+        var text = overlay.querySelector('#editText').value.trim();
+        if (!text) return null;
         var activePri = overlay.querySelector('.todo-priority-picker .active');
-        todo.priority = activePri ? parseInt(activePri.dataset.value, 10) : 1;
-        todo.due_date = overlay.querySelector('#editDueDate').value || null;
-        todo.tags = overlay.querySelector('#editTags').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-        todo.notes = overlay.querySelector('#editNotes').value;
         var repeatType = overlay.querySelector('#editRepeat').value;
         var reminderVal = null;
         var dayMode = 'fixed';
-
         if (repeatType === '' || repeatType === null) {
-            // 不重复
             reminderVal = overlay.querySelector('#editReminderOnce').value;
         } else if (repeatType === 'daily') {
             var timeVal = overlay.querySelector('#editReminderDaily').value;
@@ -2003,29 +2198,69 @@ function openTodoEditModal(id) {
                 }
             }
         }
-
-        if (reminderVal) {
-            todo.reminder = { datetime: reminderVal, sound: true, day_mode: dayMode };
-        } else {
-            todo.reminder = null;
-        }
-        todo.repeat = overlay.querySelector('#editRepeat').value || null;
-        overlay.remove();
-        saveConfigToBackend();
-        if (isNew) {
-            window.__log.info('Todo', '新增待办: ' + todo.text + (todo.repeat ? ' [repeat:' + todo.repeat + ']' : '') + (todo.priority > 1 ? ' [p:' + todo.priority + ']' : ''));
-        } else {
-            window.__log.info('Todo', '编辑待办: ' + todo.text);
-        }
-        renderTodos();
+        return {
+            text: text,
+            priority: activePri ? parseInt(activePri.dataset.value, 10) : 1,
+            due_date: overlay.querySelector('#editDueDate').value || null,
+            tags: overlay.querySelector('#editTags').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+            notes: overlay.querySelector('#editNotes').value,
+            repeat: overlay.querySelector('#editRepeat').value || null,
+            reminder: reminderVal ? { datetime: reminderVal, sound: true, day_mode: dayMode } : null,
+        };
+    }
+    function autoSave() {
+        if (_saveTimer) clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(function() {
+            var fields = collectFields();
+            if (!fields) return;
+            // 新待办首次保存时生成 ID
+            if (isNew && !todo.id) {
+                todo.id = crypto.randomUUID();
+                todo.created_at = new Date().toISOString().slice(0, 16);
+                todo.sort_order = currentConfig.todos.length;
+                currentConfig.todos.push(todo);
+            }
+            todo.text = fields.text;
+            todo.priority = fields.priority;
+            todo.due_date = fields.due_date;
+            todo.tags = fields.tags;
+            todo.notes = fields.notes;
+            todo.repeat = fields.repeat;
+            todo.reminder = fields.reminder;
+            saveConfigToBackend();
+            renderTodos();
+        }, 300);
+    }
+    // 各字段修改触发自动保存
+    overlay.querySelector('#editText').addEventListener('input', autoSave);
+    overlay.querySelectorAll('.todo-priority-picker button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            overlay.querySelectorAll('.todo-priority-picker button').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            autoSave();
+        });
     });
+    overlay.querySelector('#editDueDate').addEventListener('change', autoSave);
+    overlay.querySelector('#editTags').addEventListener('input', autoSave);
+    overlay.querySelector('#editNotes').addEventListener('input', autoSave);
+    // 提醒输入控件变化
+    overlay.querySelector('#editReminderOnce').addEventListener('change', autoSave);
+    overlay.querySelector('#editReminderDaily').addEventListener('change', autoSave);
+    overlay.querySelector('#editReminderWeekday').addEventListener('change', autoSave);
+    overlay.querySelector('#editReminderWeeklyTime').addEventListener('change', autoSave);
+    overlay.querySelector('#editReminderMonthDay').addEventListener('change', autoSave);
+    overlay.querySelector('#editReminderMonthlyTime').addEventListener('change', autoSave);
 }
 
 // ==================== 启动 ====================
 
 document.addEventListener('DOMContentLoaded', async function() {
+    var t0 = performance.now();
     // 第一步：必须同步的操作 — 加载配置、应用主题
     await loadConfig();
+    // 隐藏加载层
+    var loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
 
     // 第二步：分步渲染，避免阻塞首帧
     requestAnimationFrame(function() {
@@ -2033,6 +2268,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         requestAnimationFrame(function() {
             // 内容面板（首帧已由 switchTab 渲染）
+
+            var tDel = performance.now();
 
             // 第三步：日志面板事件绑定 + 加载历史日志（不阻塞首帧）
             setTimeout(function() {
@@ -2042,6 +2279,104 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             // 第四步：一次性事件委托，替代每次渲染后重新绑定监听器
             setupEventDelegation();
+
+            // 第五步：初始化提醒横幅队列系统 + 定义后台回调
+            window.__bannerQueue = [];
+            window.__bannerIdSeq = 0;
+            window.__renderBanners = function() {
+                var area = document.getElementById('bannerArea');
+                if (!area) return;
+                var maxShow = 2;
+                var visible = window.__bannerQueue.slice(0, maxShow);
+                var hiddenCount = window.__bannerQueue.length - maxShow;
+                area.innerHTML = '';
+                if (window.__bannerQueue.length === 0) {
+                    area.classList.remove('has-banners');
+                    return;
+                }
+                area.classList.add('has-banners');
+                visible.forEach(function(item) {
+                    var row = document.createElement('div');
+                    row.className = 'banner-item';
+                    var span = document.createElement('span');
+                    span.className = 'banner-item-text';
+                    span.textContent = item.text;
+                    row.appendChild(span);
+                    var btn = document.createElement('button');
+                    btn.className = 'banner-item-close';
+                    btn.innerHTML = '&times;';
+                    btn.addEventListener('click', function() {
+                        var idx = window.__bannerQueue.indexOf(item);
+                        if (idx !== -1) window.__bannerQueue.splice(idx, 1);
+                        window.__renderBanners();
+                    });
+                    row.appendChild(btn);
+                    area.appendChild(row);
+                });
+                if (hiddenCount > 0) {
+                    var more = document.createElement('div');
+                    more.className = 'banner-item';
+                    more.style.background = 'rgba(229,57,53,0.7)';
+                    more.style.fontSize = '12px';
+                    more.style.padding = '4px 16px';
+                    more.style.justifyContent = 'center';
+                    more.textContent = '还有 ' + hiddenCount + ' 条提醒';
+                    area.appendChild(more);
+                }
+            };
+            window.__onReminderFired = function(text) {
+                // 文本去重：相同文本的横幅不重复添加
+                var exists = window.__bannerQueue.some(function(item) { return item.text === text; });
+                if (exists) return;
+                window.__bannerQueue.push({ text: text, id: ++window.__bannerIdSeq });
+                window.__renderBanners();
+                // 刷新待办列表
+                invoke('get_config').then(function(fresh) {
+                    currentConfig.todos = fresh.todos;
+                    renderTodos();
+                }).catch(function() {});
+            };
+
+            // 启动时扫描过期提醒，展示横幅（重启后能看到未处理的过期提醒）
+            (function() {
+                var now = new Date();
+                var items = [];
+                (currentConfig.todos || []).forEach(function(t) {
+                    if (t.done || !t.reminder || !t.reminder.datetime) return;
+                    var rt = new Date(t.reminder.datetime);
+                    if (!isNaN(rt) && rt <= now) {
+                        items.push('⏰ ' + t.text);
+                    }
+                });
+                items.forEach(function(text) {
+                    window.__bannerQueue.push({ text: text, id: ++window.__bannerIdSeq });
+                });
+                window.__renderBanners();
+                if (items.length > 0) {
+                    invoke('get_config').then(function(fresh) {
+                        currentConfig.todos = fresh.todos;
+                        renderTodos();
+                    }).catch(function() {});
+                }
+            })();
+
+            // 填充年份下拉
+            (function populateHolidayYears() {
+                var select = document.getElementById('holidayYearSelect');
+                if (!select) return;
+                var currentYear = new Date().getFullYear();
+                for (var y = 2026; y <= currentYear + 1; y++) {
+                    var opt = document.createElement('option');
+                    opt.value = String(y);
+                    opt.textContent = y + '年';
+                    select.appendChild(opt);
+                }
+            })();
+
+            window.__log.perf('Startup', 'DOMContentLoaded 总耗时', {
+                loadConfig: +(tDel - t0).toFixed(2),
+                full: +(performance.now() - t0).toFixed(2)
+            });
         });
     });
 });

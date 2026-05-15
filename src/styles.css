@@ -1534,3 +1534,92 @@ button:disabled:hover { background: var(--accent); }
     font-size: var(--font-base);
     color: var(--text-secondary);
 }
+
+/* ==================== 节假日管理 ==================== */
+.holiday-year-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+.holiday-year-row span {
+    flex: 1;
+}
+.holiday-year-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text);
+}
+.holiday-editor-panel {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--surface);
+}
+.holiday-json-input {
+    width: 100%;
+    min-height: 120px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text);
+    resize: vertical;
+    box-sizing: border-box;
+}
+.holiday-error {
+    color: #e74c3c;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: rgba(231, 76, 60, 0.1);
+    border-radius: 4px;
+    line-height: 1.6;
+}
+.holiday-preview {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--bg);
+}
+.holiday-preview-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+}
+.holiday-preview-subtitle {
+    font-weight: 500;
+    margin: 8px 0 4px;
+    color: var(--text);
+}
+.holiday-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.holiday-table th, .holiday-table td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+}
+.holiday-table th {
+    background: var(--surface);
+    font-weight: 500;
+}
+.makeup-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.makeup-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    background: rgba(75, 139, 244, 0.15);
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--accent);
+}
