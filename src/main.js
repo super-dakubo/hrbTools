@@ -1437,7 +1437,7 @@ function getTemplateJSON(year) {
 function openHolidayEditor(year) {
     var editor = document.getElementById('holidayEditor');
     var existing = (currentConfig.holiday_data || []).find(function(h) { return h.year === year; });
-    var defaultText = existing ? JSON.stringify(existing, null, 2) : '';
+    var defaultText = existing ? JSON.stringify(existing, null, 2) : getTemplateJSON(year);
 
     editor.style.display = 'block';
     editor.innerHTML = ''

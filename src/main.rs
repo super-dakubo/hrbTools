@@ -1542,6 +1542,12 @@ fn main() {
                     }
 
                     write_log(&app_handle, &format!("线程运行中，待办数={}", config.todos.len()));
+
+                    // 当日 day_type 固定，所有待办共用（避免循环内重复计算）
+                    let today = chrono::Local::now().date_naive();
+                    let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
+                    let today_day_type = get_day_type(&today, holiday_year);
+
                     for todo in config.todos.iter_mut() {
                         if todo.done {
                             write_log(&app_handle, &format!("跳过已完成的待办: '{}'", todo.text));
@@ -1559,11 +1565,7 @@ fn main() {
                             }
                         };
 
-                        // 根据 day_type 获取当日提醒时间
-                        let now_local = chrono::Local::now();
-                        let today = now_local.date_naive();
-                        let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
-                        let day_type = get_day_type(&today, holiday_year);
+                        let day_type = today_day_type;
 
                         let target_time = if day_type == "workday" {
                             reminder.workday_time.as_deref()
