@@ -1,9 +1,9 @@
 /* ==================== 主题变量 ==================== */
 :root {
     /* 颜色 — 暗色模式 */
-    --bg: #212539;
+    --bg: #1a1e2e;
     --bg-alt: #1a1e2e;
-    --surface: rgba(255,255,255,0.04);
+    --surface: rgba(255,255,255,0.06);
     --surface-hover: rgba(255,255,255,0.07);
     --border: rgba(255,255,255,0.06);
     --border-strong: rgba(255,255,255,0.1);
@@ -29,6 +29,11 @@
     --scrollbar-thumb-hover: rgba(255,255,255,0.15);
     --shadow: rgba(0,0,0,0.4);
 
+    /* 玻璃拟态 */
+    --glass-bg: rgba(255,255,255,0.04);
+    --glass-border: rgba(255,255,255,0.08);
+    --radius-glass: 14px;
+
     /* 排版 */
     --font-xs: 0.65rem;
     --font-sm: 0.78rem;
@@ -41,7 +46,7 @@
     --radius-sm: 4px;
     --radius: 6px;
     --radius-lg: 8px;
-    --radius-xl: 12px;
+    --radius-xl: 16px;
     --radius-pill: 15px;
 
     /* 间距 */
@@ -54,9 +59,9 @@
 
 body.light {
     /* 颜色 — 亮色模式 */
-    --bg: #f5f6f8;
+    --bg: #f0f2f5;
     --bg-alt: #e8eaef;
-    --surface: rgba(0,0,0,0.04);
+    --surface: rgba(255,255,255,0.7);
     --surface-hover: rgba(0,0,0,0.07);
     --border: rgba(0,0,0,0.07);
     --border-strong: rgba(0,0,0,0.14);
@@ -80,6 +85,11 @@ body.light {
     --scrollbar-thumb: rgba(0,0,0,0.15);
     --scrollbar-thumb-hover: rgba(0,0,0,0.25);
     --shadow: rgba(0,0,0,0.08);
+
+    /* 玻璃拟态 */
+    --glass-bg: rgba(255,255,255,0.6);
+    --glass-border: rgba(0,0,0,0.06);
+    --radius-glass: 14px;
 }
 
 /* ==================== 基础重置 ==================== */
@@ -326,6 +336,38 @@ button:disabled:hover { background: var(--accent); }
     flex-shrink: 0;
     margin-top: 0;
     border-radius: 6px;
+}
+
+.toggle-switch {
+    display: inline-block;
+    width: 46px;
+    height: 26px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s;
+    box-sizing: border-box;
+}
+.toggle-switch[data-state="on"] {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+.toggle-switch .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-switch[data-state="on"] .toggle-thumb {
+    transform: translateX(20px);
 }
 
 .btn-danger {
