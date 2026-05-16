@@ -347,9 +347,9 @@ label {
 
 input, select {
     width: 100%;
-    padding: 0.6rem 0.8rem;
+    padding: 0.55rem 0.9rem;
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: var(--font-md);
     background: var(--input-bg);
     color: var(--text);
@@ -359,7 +359,7 @@ input, select {
 input:focus, select:focus {
     outline: none;
     border-color: rgba(var(--accent-rgb), 0.5);
-    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
 }
 
 select { cursor: pointer; }
@@ -370,24 +370,22 @@ button {
     color: #fff;
     border: none;
     width: 100%;
-    padding: 0.65rem;
+    padding: 0.55rem 1.8rem;
     font-size: var(--font-md);
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: 24px;
     cursor: pointer;
-    transition: background 0.2s, transform 0.1s, opacity 0.2s;
+    transition: background 0.15s, opacity 0.15s;
     margin-top: 0.3rem;
 }
 
 button:hover { background: var(--accent-hover); }
-button:active { transform: scale(0.98); }
+button:active { opacity: 0.9; }
 
 button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
 }
-
 button:disabled:hover { background: var(--accent); }
 
 .row {
@@ -400,11 +398,11 @@ button:disabled:hover { background: var(--accent); }
 
 .btn-small {
     width: auto;
-    padding: 0.5rem 0.9rem;
+    padding: 0.5rem 1rem;
     font-size: var(--font-sm);
     flex-shrink: 0;
     margin-top: 0;
-    border-radius: 6px;
+    border-radius: 16px;
 }
 
 .toggle-switch {
@@ -421,8 +419,8 @@ button:disabled:hover { background: var(--accent); }
     box-sizing: border-box;
 }
 .toggle-switch[data-state="on"] {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.85);
+    border-color: rgba(var(--accent-rgb), 0.5);
 }
 .toggle-switch .toggle-thumb {
     position: absolute;
@@ -1018,12 +1016,14 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .modal {
-    background: var(--bg);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    width: 400px;
-    box-shadow: 0 12px 40px var(--shadow);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    width: 420px;
+    box-shadow: 0 24px 60px var(--shadow);
     overflow: hidden;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 
 .modal-header {
@@ -1177,18 +1177,17 @@ button:disabled:hover { background: var(--accent); }
 .banner-item {
     display: flex;
     align-items: center;
-    background: #e53935;
-    color: #fff;
+    background: var(--danger-bg);
+    color: var(--danger-text);
     padding: 8px 18px;
     font-size: var(--font-sm);
     font-weight: 500;
     gap: 10px;
     cursor: default;
     user-select: none;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-}
-.banner-item:last-child {
-    border-bottom: none;
+    border-left: 4px solid var(--danger-text);
+    border-radius: 6px;
+    margin: 4px 16px;
 }
 
 .banner-item-text {
@@ -1200,22 +1199,23 @@ button:disabled:hover { background: var(--accent); }
 
 .banner-item-close {
     flex-shrink: 0;
-    background: rgba(255,255,255,0.2);
-    border: none;
-    color: #fff;
-    font-size: 14px;
+    background: transparent;
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    color: var(--text-secondary);
+    font-size: 12px;
     line-height: 1;
     width: 22px;
     height: 22px;
-    border-radius: 3px;
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
+    transition: background 0.15s;
 }
 .banner-item-close:hover {
-    background: rgba(255,255,255,0.35);
+    background: rgba(var(--accent-rgb), 0.1);
 }
 
 /* ==================== 待办工具 ==================== */
@@ -1262,7 +1262,7 @@ button:disabled:hover { background: var(--accent); }
     align-items: center;
     gap: 8px;
     padding: 12px 14px;
-    border-radius: var(--radius);
+    border-radius: 10px;
     transition: background 0.15s;
     cursor: default;
 }
@@ -1285,8 +1285,8 @@ button:disabled:hover { background: var(--accent); }
 .todo-drag-handle:active { cursor: grabbing; }
 
 .todo-check {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border: 2px solid var(--border-strong);
     border-radius: 50%;
     display: inline-flex;
@@ -1294,7 +1294,7 @@ button:disabled:hover { background: var(--accent); }
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
-    font-size: 13px;
+    font-size: 14px;
     color: transparent;
     transition: background 0.15s, border-color 0.15s;
 }
@@ -1413,14 +1413,17 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .todo-edit-modal {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
     padding: 28px;
     width: 560px;
     max-width: 90vw;
     max-height: 90vh;
     overflow-y: auto;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 24px 60px var(--shadow);
 }
 
 .todo-edit-header {
@@ -1604,6 +1607,8 @@ button:disabled:hover { background: var(--accent); }
     gap: 16px;
     background: var(--bg);
     transition: opacity 0.3s ease;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 .loading-overlay.hidden {
@@ -1612,9 +1617,9 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .loading-spinner {
-    width: 44px;
-    height: 44px;
-    border: 4px solid var(--border);
+    width: 48px;
+    height: 48px;
+    border: 5px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
