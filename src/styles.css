@@ -278,10 +278,10 @@ body {
 .panel {
     display: block;
     position: absolute;
-    top: 24px;
-    left: 28px;
-    right: 28px;
-    bottom: 24px;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
     overflow-y: auto;
     opacity: 0;
     pointer-events: none;
@@ -293,6 +293,31 @@ body {
     pointer-events: auto;
     visibility: visible;
     will-change: opacity;
+}
+
+/* ==================== 玻璃卡片容器 ==================== */
+.panel-inner {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-glass);
+    padding: 24px 28px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    height: 100%;
+}
+
+/* 待办和日志面板需要 flex 布局 */
+#panel-todo.active .panel-inner,
+#panel-log .panel-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#panel-todo .todo-list,
+#panel-log .log-entries {
+    flex: 1;
+    min-height: 0;
 }
 
 /* ==================== 共用组件 ==================== */
@@ -1487,23 +1512,6 @@ button:disabled:hover { background: var(--accent); }
 }
 
 .todo-edit-row > * { flex: 1; }
-
-/* 待办面板占满可用高度 */
-#panel-todo.active {
-    display: flex;
-    flex-direction: column;
-}
-
-#panel-todo .todo-list {
-    flex: 1;
-    min-height: 0;
-}
-
-/* ==================== 日志面板 ==================== */
-#panel-log {
-    display: flex;
-    flex-direction: column;
-}
 
 .log-toolbar {
     display: flex;

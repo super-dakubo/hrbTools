@@ -41,95 +41,103 @@
 
         <!-- 时间转换面板 -->
         <div class="panel active" id="panel-convert">
-            <div class="timezone-sets" id="timezoneSets">
-                <!-- 动态生成 .tz-set -->
+            <div class="panel-inner">
+                <div class="timezone-sets" id="timezoneSets">
+                    <!-- 动态生成 .tz-set -->
+                </div>
+                <button class="tz-add-btn" id="addTimezoneBtn">+ 新增时区</button>
+                <div id="startupTiming" style="margin-top:8px;font-size:0.7rem;color:var(--text-dim,#888);text-align:center;"></div>
             </div>
-            <button class="tz-add-btn" id="addTimezoneBtn">+ 新增时区</button>
-            <div id="startupTiming" style="margin-top:8px;font-size:0.7rem;color:var(--text-dim,#888);text-align:center;"></div>
         </div>
 
         <!-- 存档管理面板 -->
         <div class="panel" id="panel-backup">
-            <h1>游戏存档备份</h1>
+            <div class="panel-inner">
+                <h1>游戏存档备份</h1>
 
-            <!-- 第一层：游戏标签 -->
-            <div class="game-tabs" id="gameTabs">
-                <!-- 动态生成 .game-tab + .game-tab-add -->
-            </div>
-
-            <!-- 第二层：存档位标签 -->
-            <div class="slot-tabs" id="slotTabs">
-                <!-- 动态生成 .slot-tag + .slot-tag-add -->
-            </div>
-
-            <!-- 存档文件 -->
-            <div class="input-group">
-                <label>存档文件</label>
-                <div class="file-tags" id="fileTags">
-                    <!-- 动态生成 .file-tag + .file-tag-add -->
+                <!-- 第一层：游戏标签 -->
+                <div class="game-tabs" id="gameTabs">
+                    <!-- 动态生成 .game-tab + .game-tab-add -->
                 </div>
-                <div class="row" style="margin-top:6px;">
-                    <button id="browseFileBtn" class="btn-small">浏览添加</button>
-                    <button id="rehashBtn" class="btn-small" title="重算所有文件哈希">重算</button>
+
+                <!-- 第二层：存档位标签 -->
+                <div class="slot-tabs" id="slotTabs">
+                    <!-- 动态生成 .slot-tag + .slot-tag-add -->
                 </div>
-            </div>
 
-            <button id="saveBackupBtn">保存存档</button>
+                <!-- 存档文件 -->
+                <div class="input-group">
+                    <label>存档文件</label>
+                    <div class="file-tags" id="fileTags">
+                        <!-- 动态生成 .file-tag + .file-tag-add -->
+                    </div>
+                    <div class="row" style="margin-top:6px;">
+                        <button id="browseFileBtn" class="btn-small">浏览添加</button>
+                        <button id="rehashBtn" class="btn-small" title="重算所有文件哈希">重算</button>
+                    </div>
+                </div>
 
-            <div id="backupError" class="error"></div>
-            <div id="backupSuccess" class="success"></div>
+                <button id="saveBackupBtn">保存存档</button>
 
-            <!-- 备份列表 -->
-            <div class="backup-list-section">
-                <h3 id="backupListTitle">备份记录</h3>
-                <div id="backupList" class="backup-list">
-                    <div class="empty-hint">请先选择游戏和存档位</div>
+                <div id="backupError" class="error"></div>
+                <div id="backupSuccess" class="success"></div>
+
+                <!-- 备份列表 -->
+                <div class="backup-list-section">
+                    <h3 id="backupListTitle">备份记录</h3>
+                    <div id="backupList" class="backup-list">
+                        <div class="empty-hint">请先选择游戏和存档位</div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- 待办面板 -->
         <div class="panel" id="panel-todo">
-            <div class="todo-toolbar">
-                <input type="text" id="todoSearch" class="todo-search-input" placeholder="🔍 搜索待办...">
-                <select id="todoFilterStatus" class="todo-filter-select">
-                    <option value="all">全部</option>
-                    <option value="active">待完成</option>
-                    <option value="done">已完成</option>
-                </select>
-                <select id="todoFilterPriority" class="todo-filter-select">
-                    <option value="-1">全部优先级</option>
-                    <option value="2">高</option>
-                    <option value="1">中</option>
-                    <option value="0">低</option>
-                </select>
-            </div>
-            <div class="todo-stats" id="todoStats"></div>
-            <div class="todo-list" id="todoList">
-                <div class="empty-hint">暂无待办，在下方添加</div>
-            </div>
-            <div class="todo-add-bar">
-                <button id="todoAddBtn">+ 添加待办</button>
+            <div class="panel-inner">
+                <div class="todo-toolbar">
+                    <input type="text" id="todoSearch" class="todo-search-input" placeholder="🔍 搜索待办...">
+                    <select id="todoFilterStatus" class="todo-filter-select">
+                        <option value="all">全部</option>
+                        <option value="active">待完成</option>
+                        <option value="done">已完成</option>
+                    </select>
+                    <select id="todoFilterPriority" class="todo-filter-select">
+                        <option value="-1">全部优先级</option>
+                        <option value="2">高</option>
+                        <option value="1">中</option>
+                        <option value="0">低</option>
+                    </select>
+                </div>
+                <div class="todo-stats" id="todoStats"></div>
+                <div class="todo-list" id="todoList">
+                    <div class="empty-hint">暂无待办，在下方添加</div>
+                </div>
+                <div class="todo-add-bar">
+                    <button id="todoAddBtn">+ 添加待办</button>
+                </div>
             </div>
         </div>
 
         <!-- 日志面板 -->
         <div class="panel" id="panel-log">
-            <div class="log-toolbar">
-                <input type="text" id="logSearch" class="log-search-input" placeholder="&#128269; 搜索日志...">
-                <select id="logLevelFilter" class="log-filter-select">
-                    <option value="ALL">全部</option>
-                    <option value="ERROR">ERROR</option>
-                    <option value="WARN">WARN</option>
-                    <option value="PERF">PERF</option>
-                    <option value="INFO">INFO</option>
-                    <option value="DEBUG">DEBUG</option>
-                </select>
-                <button id="logOpenDirBtn" class="btn-small">打开日志目录</button>
-                <button id="logClearBtn" class="btn-small">清屏</button>
-            </div>
-            <div id="logEntries" class="log-entries">
-                <div class="empty-hint">暂无日志</div>
+            <div class="panel-inner">
+                <div class="log-toolbar">
+                    <input type="text" id="logSearch" class="log-search-input" placeholder="&#128269; 搜索日志...">
+                    <select id="logLevelFilter" class="log-filter-select">
+                        <option value="ALL">全部</option>
+                        <option value="ERROR">ERROR</option>
+                        <option value="WARN">WARN</option>
+                        <option value="PERF">PERF</option>
+                        <option value="INFO">INFO</option>
+                        <option value="DEBUG">DEBUG</option>
+                    </select>
+                    <button id="logOpenDirBtn" class="btn-small">打开日志目录</button>
+                    <button id="logClearBtn" class="btn-small">清屏</button>
+                </div>
+                <div id="logEntries" class="log-entries">
+                    <div class="empty-hint">暂无日志</div>
+                </div>
             </div>
         </div>
 
