@@ -16,12 +16,14 @@
 
     <!-- 自定义标题栏 -->
     <div class="title-bar">
+        <div class="window-controls">
+            <button class="win-ctrl win-close" id="closeBtn" title="关闭"><span class="win-ctrl-icon">&#x2715;</span></button>
+            <button class="win-ctrl win-minimize" id="minimizeBtn" title="最小化"><span class="win-ctrl-icon">&#x2014;</span></button>
+            <button class="win-ctrl win-maximize" id="maximizeBtn" title="最大化"><span class="win-ctrl-icon">&#x25A1;</span></button>
+        </div>
         <span class="title-bar-text">HRB Tools</span>
         <span class="title-bar-spacer"></span>
         <button class="title-bar-btn" id="settingsBtn" title="设置">&#9881;</button>
-        <button class="title-bar-btn" id="minimizeBtn" title="最小化">&#x2014;</button>
-        <button class="title-bar-btn" id="maximizeBtn" title="最大化">&#x25A1;</button>
-        <button class="title-bar-btn title-bar-close" id="closeBtn" title="关闭">&#x2715;</button>
     </div>
 
     <!-- 提醒横幅区（标题栏下方，不遮盖内容） -->
@@ -157,15 +159,15 @@
                 <div class="input-group">
                     <div class="row" style="justify-content:space-between;margin-top:12px;">
                         <label style="margin:0;">开机自启</label>
-                        <button class="btn-small" id="autoStartToggle" style="width:auto;">关闭</button>
+                        <span class="toggle-switch" id="autoStartToggle" data-state="off"><span class="toggle-thumb"></span></span>
                     </div>
                     <div class="row" style="justify-content:space-between;margin-top:8px;">
                         <label style="margin:0;">最小化到托盘</label>
-                        <button class="btn-small" id="trayToggle" style="width:auto;">开启</button>
+                        <span class="toggle-switch" id="trayToggle" data-state="on"><span class="toggle-thumb"></span></span>
                     </div>
                     <div class="row" style="justify-content:space-between;margin-top:8px;">
                         <label style="margin:0;">启用提醒</label>
-                        <button class="btn-small" id="reminderToggle" style="width:auto;">开启</button>
+                        <span class="toggle-switch" id="reminderToggle" data-state="on"><span class="toggle-thumb"></span></span>
                     </div>
                 </div>
                 <div class="input-group">

@@ -127,19 +127,21 @@ body {
 .title-bar {
     display: flex;
     align-items: center;
-    padding: 8px 14px;
+    padding: 6px 16px;
     background: var(--titlebar-bg);
     border-bottom: 1px solid var(--border);
     -webkit-app-region: drag;
     flex-shrink: 0;
     user-select: none;
+    gap: 12px;
 }
 
 .title-bar-text {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     flex-shrink: 0;
+    -webkit-app-region: no-drag;
 }
 
 .title-bar-spacer { flex: 1; }
@@ -147,20 +149,61 @@ body {
 .title-bar-btn {
     width: auto;
     margin: 0;
-    padding: 5px 14px;
-    font-size: 0.9rem;
+    padding: 5px 12px;
+    font-size: 0.85rem;
     background: transparent;
     color: var(--text-muted);
     border: none;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     line-height: 1;
     -webkit-app-region: no-drag;
     flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.title-bar-btn:hover { background: var(--surface-hover); color: var(--text); }
+
+/* ─── Mac 风格窗口控制按钮 ─── */
+.window-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    -webkit-app-region: no-drag;
 }
 
-.title-bar-btn:hover { background: var(--surface-hover); color: var(--text); }
-.title-bar-close:hover { background: #e81123; color: #fff; }
+.win-ctrl {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: filter 0.15s;
+}
+
+.win-ctrl .win-ctrl-icon {
+    font-size: 9px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s;
+    color: rgba(0,0,0,0.6);
+    position: absolute;
+}
+
+.win-ctrl:hover .win-ctrl-icon { opacity: 1; }
+
+.win-close    { background: #ff5f57; border: 1px solid #e04944; }
+.win-minimize { background: #febc2e; border: 1px solid #dba222; }
+.win-maximize { background: #28c840; border: 1px solid #1aaa34; }
+
+.win-close:hover    { filter: brightness(1.1); }
+.win-minimize:hover { filter: brightness(1.1); }
+.win-maximize:hover { filter: brightness(1.1); }
 
 /* ==================== 主体区域 ==================== */
 .body-area {
