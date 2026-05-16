@@ -69,9 +69,8 @@ function renderTabBar() {
         const def = TAB_DEFS[id];
         if (!def) return '';
         const active = id === currentTab ? ' active' : '';
-        return `<div class="tab${active}" data-tab="${id}" role="button" tabindex="0">
+        return `<div class="tab${active}" data-tab="${id}" role="button" tabindex="0" title="${def.label}">
             <span class="tab-icon">${def.icon}</span>
-            <span class="tab-label">${def.label}</span>
         </div>`;
     }).join('');
 
@@ -571,39 +570,6 @@ function renderFileTags() {
     window.__log.perf('Render', 'renderFileTags', { ms: +(performance.now() - t0).toFixed(2), files: paths.length });
     }
 
-function bindFileTagEvents() {
-    const addBtn = document.getElementById('addFileBtn');
-    if (addBtn) {
-        addBtn.addEventListener('click', async () => {
-            const startDir = (currentConfig.backup_root || null);
-            const path = await invoke('pick_file', { startDir });
-            if (path) {
-                const paths = getCurrentFilePaths();
-                if (!paths.includes(path)) {
-                    paths.push(path);
-                    setCurrentFilePaths(paths);
-                    renderFileTags();
-                    await refreshCurrentHashes();
-                    refreshBackupList();
-                }
-            }
-        });
-    }
-
-    fileTagsContainer.querySelectorAll('[data-action="remove-file"]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const idx = parseInt(btn.dataset.index, 10);
-            const paths = getCurrentFilePaths();
-            paths.splice(idx, 1);
-            setCurrentFilePaths(paths);
-            renderFileTags();
-            await refreshCurrentHashes();
-            refreshBackupList();
-        });
-    });
-}
-
 // ==================== 游戏标签渲染 ====================
 
 function renderGameTabs() {
@@ -628,80 +594,6 @@ function getSortedGames() {
         if (a.pinned !== b.pinned) return b.pinned - a.pinned;
         return a.name.localeCompare(b.name);
     });
-}
-
-function bindGameTabEvents() {
-    document.querySelectorAll('.game-tab').forEach(tab => {
-        tab.addEventListener('click', (e) => {
-            if (e.target.dataset.action === 'delete-game') return;
-            if (e.target.dataset.action === 'pin-game') {
-                e.stopPropagation();
-                toggleGamePin(e.target.dataset.gameId);
-                return;
-            }
-            const gameId = tab.dataset.gameId;
-            if (gameId !== selectedGameId) {
-                selectedGameId = gameId;
-                selectedSlotId = '';
-                const game = currentConfig.games.find(g => g.id === gameId);
-                if (game && game.slots.length > 0) {
-                    selectedSlotId = game.slots[0].id;
-                    restoreFilePaths();
-                }
-                renderGameTabs();
-                renderSlotTabs();
-                refreshBackupList();
-            }
-        });
-
-        tab.addEventListener('dblclick', (e) => {
-            if (e.target.dataset.action === 'delete-game') return;
-            startInlineEditGame(tab);
-        });
-
-    });
-
-    document.querySelectorAll('.tab-close[data-action="delete-game"]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const gameId = btn.dataset.gameId;
-            const game = currentConfig.games.find(g => g.id === gameId);
-            if (!game) return;
-            if (!confirm(`确定删除游戏「${game.name}」及其所有存档位吗？`)) return;
-            currentConfig.games = currentConfig.games.filter(g => g.id !== gameId);
-            if (selectedGameId === gameId) { selectedGameId = ''; selectedSlotId = ''; }
-            await saveConfigToBackend();
-            renderGameTabs();
-            renderSlotTabs();
-            refreshBackupList();
-        });
-    });
-
-    const addBtn = document.getElementById('addGameBtn');
-    if (addBtn) {
-        addBtn.addEventListener('click', async () => {
-            const gameId = crypto.randomUUID();
-            const slotId = crypto.randomUUID();
-            const n = currentConfig.games.length + 1;
-            const name = `游戏${n}`;
-            currentConfig.games.push({
-                id: gameId,
-                name,
-                slots: [{ id: slotId, name: '存档1', file_paths: [], next_backup_number: 1, key_file_patterns: [] }],
-                pinned: false
-            });
-            await saveConfigToBackend();
-            selectedGameId = gameId;
-            selectedSlotId = slotId;
-            renderGameTabs();
-            renderSlotTabs();
-            refreshBackupList();
-            setTimeout(() => {
-                const newTab = document.querySelector(`.game-tab[data-game-id="${gameId}"]`);
-                if (newTab) startInlineEditGame(newTab);
-            }, 50);
-        });
-    }
 }
 
 function startInlineEditGame(tab) {
@@ -785,60 +677,6 @@ function renderSlotTabs() {
         `<button class="slot-tag-add" id="addSlotBtn" title="新增存档位">+</button>`;
 
     window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: game.slots.length });
-}
-
-function bindSlotTagEvents(game) {
-    document.querySelectorAll('.slot-tag').forEach(tag => {
-        tag.addEventListener('click', (e) => {
-            if (e.target.dataset.action === 'delete-slot') return;
-            const slotId = tag.dataset.slotId;
-            if (slotId !== selectedSlotId) {
-                selectedSlotId = slotId;
-                restoreFilePaths();
-                renderSlotTabs();
-                refreshBackupList();
-            }
-        });
-
-        tag.addEventListener('dblclick', (e) => {
-            if (e.target.dataset.action === 'delete-slot') return;
-            startInlineEditSlot(tag);
-        });
-    });
-
-    document.querySelectorAll('.tag-close[data-action="delete-slot"]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const slotId = btn.dataset.slotId;
-            const slot = game.slots.find(s => s.id === slotId);
-            if (!slot) return;
-            if (game.slots.length <= 1) { alert('至少保留一个存档位'); return; }
-            if (!confirm(`确定删除存档位「${slot.name}」及其所有备份吗？`)) return;
-            game.slots = game.slots.filter(s => s.id !== slotId);
-            if (selectedSlotId === slotId) selectedSlotId = game.slots[0].id;
-            await saveConfigToBackend();
-            renderSlotTabs();
-            refreshBackupList();
-        });
-    });
-
-    const addBtn = document.getElementById('addSlotBtn');
-    if (addBtn) {
-        addBtn.addEventListener('click', async () => {
-            const slotId = crypto.randomUUID();
-            const n = game.slots.length + 1;
-            const name = `存档${n}`;
-            game.slots.push({ id: slotId, name, file_paths: [], next_backup_number: 1, key_file_patterns: [] });
-            await saveConfigToBackend();
-            selectedSlotId = slotId;
-            renderSlotTabs();
-            refreshBackupList();
-            setTimeout(() => {
-                const newTag = document.querySelector(`.slot-tag[data-slot-id="${slotId}"]`);
-                if (newTag) startInlineEditSlot(newTag);
-            }, 50);
-        });
-    }
 }
 
 function startInlineEditSlot(tag) {
@@ -1052,25 +890,7 @@ async function refreshBackupList() {
     }
 }
 
-function bindBackupItemEvents() {
-    backupList.querySelectorAll('[data-action]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const action = btn.dataset.action;
-            const folder = btn.dataset.folder;
-
-            if (action === 'restore') await handleRestore(folder);
-            else if (action === 'rename-backup') await handleRenameBackup(folder, btn.dataset.desc);
-            else if (action === 'delete-backup') await handleDeleteBackup(folder);
-            else if (action === 'toggle-pin') await handleTogglePin(btn, folder);
-            else if (action === 'open-backup') await handleOpenBackupFolder(folder);
-            else if (action === 'rehash-backup') await handleRehashBackup(btn, folder);
-        });
-    });
-}
-
 async function handleRestore(folderName) {
-    setButtonLoading(saveBackupBtn, '恢复中...');
     try {
         const result = await invoke('restore_backup', {
             gameId: selectedGameId,
@@ -1112,8 +932,6 @@ async function handleRestore(folderName) {
         }
     } catch (err) {
         alert('恢复失败: ' + err);
-    } finally {
-        resetButton(saveBackupBtn, '保存存档');
     }
 }
 
@@ -1189,7 +1007,6 @@ function showRestoreFileModal(files, folderName) {
         });
         if (selected.length === 0) { alert('请至少选择一个文件'); return; }
         close();
-        setButtonLoading(saveBackupBtn, '恢复中...');
         try {
             var result = await invoke('restore_backup', {
                 gameId: selectedGameId,
@@ -1207,8 +1024,6 @@ function showRestoreFileModal(files, folderName) {
             }
         } catch (err) {
             alert('恢复失败: ' + err);
-        } finally {
-            resetButton(saveBackupBtn, '保存存档');
         }
     });
 }
@@ -1256,7 +1071,6 @@ async function handleRehashBackup(btn, folderName) {
 
 async function handleDeleteBackup(folderName) {
     if (!confirm('确定要删除此备份吗？此操作不可恢复。')) return;
-    setButtonLoading(saveBackupBtn, '删除中...');
     try {
         const result = await invoke('delete_backup', {
             gameId: selectedGameId,
@@ -1267,8 +1081,6 @@ async function handleDeleteBackup(folderName) {
         else { alert('删除失败: ' + result.message); }
     } catch (err) {
         alert('删除失败: ' + err);
-    } finally {
-        resetButton(saveBackupBtn, '保存存档');
     }
 }
 
@@ -1322,24 +1134,24 @@ themeToggleBtn.addEventListener('click', () => {
 });
 
 // 开机自启开关
-autoStartToggle.addEventListener('click', async function() {
+autoStartToggle.addEventListener('click', function() {
     currentConfig.auto_start = !currentConfig.auto_start;
-    await saveConfigToBackend();
     updateSettingsDisplay();
+    saveConfigToBackend();
 });
 
 // 托盘开关
-trayToggle.addEventListener('click', async function() {
+trayToggle.addEventListener('click', function() {
     currentConfig.minimize_to_tray = !currentConfig.minimize_to_tray;
-    await saveConfigToBackend();
     updateSettingsDisplay();
+    saveConfigToBackend();
 });
 
 // 启用提醒开关
-reminderToggle.addEventListener('click', async function() {
+reminderToggle.addEventListener('click', function() {
     currentConfig.reminder_enabled = currentConfig.reminder_enabled !== false ? false : true;
-    await saveConfigToBackend();
     updateSettingsDisplay();
+    saveConfigToBackend();
 });
 
 function applyTheme(theme) {
@@ -1378,15 +1190,15 @@ function updateSettingsDisplay() {
         settingsBackupRoot.textContent = '未设置';
         settingsBackupRoot.classList.remove('has-value');
     }
-    // 开机自启和托盘开关状态
+    // 开关状态
     if (autoStartToggle) {
-        autoStartToggle.textContent = currentConfig.auto_start ? '开启' : '关闭';
+        autoStartToggle.dataset.state = currentConfig.auto_start ? 'on' : 'off';
     }
     if (trayToggle) {
-        trayToggle.textContent = currentConfig.minimize_to_tray ? '开启' : '关闭';
+        trayToggle.dataset.state = currentConfig.minimize_to_tray ? 'on' : 'off';
     }
     if (reminderToggle) {
-        reminderToggle.textContent = currentConfig.reminder_enabled !== false ? '开启' : '关闭';
+        reminderToggle.dataset.state = currentConfig.reminder_enabled !== false ? 'on' : 'off';
     }
     renderHolidayYears();
 }
@@ -1467,6 +1279,27 @@ function openHolidayEditor(year) {
 
     document.getElementById('holidayCancelBtn').addEventListener('click', function() {
         editor.style.display = 'none';
+    });
+
+    // 保存按钮只绑定一次，点击时从 textarea 读取最新内容
+    document.getElementById('holidaySaveBtn').addEventListener('click', async function() {
+        var text = document.getElementById('holidayJsonInput').value;
+        var data;
+        try {
+            data = JSON.parse(text);
+        } catch(e) {
+            alert('JSON 格式错误，无法保存');
+            return;
+        }
+        var list = currentConfig.holiday_data || [];
+        var idx = list.findIndex(function(h) { return h.year === data.year; });
+        if (idx !== -1) list[idx] = data;
+        else list.push(data);
+        currentConfig.holiday_data = list;
+        await saveConfigToBackend();
+        renderHolidayYears();
+        editor.style.display = 'none';
+        window.__log.info('Holiday', data.year + '年节假日配置已保存');
     });
 
     if (defaultText) {
@@ -1553,20 +1386,6 @@ function parseAndPreviewHolidayJSON(text, year) {
 
     var saveBtn = document.getElementById('holidaySaveBtn');
     saveBtn.style.display = '';
-    // Remove old click handler before adding new one to prevent duplicates
-    var newSaveBtn = saveBtn.cloneNode(true);
-    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-    newSaveBtn.addEventListener('click', async function() {
-        var list = currentConfig.holiday_data || [];
-        var idx = list.findIndex(function(h) { return h.year === data.year; });
-        if (idx !== -1) list[idx] = data;
-        else list.push(data);
-        currentConfig.holiday_data = list;
-        await saveConfigToBackend();
-        renderHolidayYears();
-        document.getElementById('holidayEditor').style.display = 'none';
-        window.__log.info('Holiday', data.year + '年节假日配置已保存');
-    });
 }
 
 // 添加节假日按钮
@@ -1708,12 +1527,12 @@ function autoClearExpiredPaused() {
             changed = true;
         }
     });
-    if (changed) saveConfigToBackend();
+    return changed;
 }
 
 function renderTodos() {
     var t0 = performance.now();
-    autoClearExpiredPaused();
+    if (autoClearExpiredPaused()) saveConfigToBackend();
     const items = currentConfig.todos || [];
     const keyword = (todoSearch.value || '').toLowerCase();
     const statusFilter = todoFilterStatus.value;
@@ -1768,53 +1587,6 @@ function renderTodos() {
     }).join('');
 
     window.__log.perf('Render', 'renderTodos', { ms: +(performance.now() - t0).toFixed(2), total: items.length, filtered: sorted.length });
-}
-
-function isOverdue(dateStr) {
-    if (!dateStr) return false;
-    var d = new Date(dateStr + 'T23:59:59');
-    return d < new Date();
-}
-
-function bindTodoEvents() {
-    todoList.querySelectorAll('[data-action="toggle-todo"]').forEach(function(el) {
-        el.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var id = this.closest('.todo-item').dataset.id;
-            toggleTodoDone(id);
-        });
-    });
-
-    todoList.querySelectorAll('[data-action="edit-todo"]').forEach(function(el) {
-        el.addEventListener('click', function() {
-            var id = this.closest('.todo-item').dataset.id;
-            openTodoEditModal(id);
-        });
-    });
-
-    todoList.querySelectorAll('[data-action="delete-todo"]').forEach(function(el) {
-        el.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var id = this.closest('.todo-item').dataset.id;
-            if (confirm('确定删除此待办？')) deleteTodo(id);
-        });
-    });
-
-    todoList.querySelectorAll('[data-action="toggle-pause"]').forEach(function(el) {
-        el.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var id = this.closest('.todo-item').dataset.id;
-            var todo = currentConfig.todos.find(function(t) { return t.id === id; });
-            if (!todo || !todo.reminder) return;
-            // 已过期状态不可切换
-            var now = new Date();
-            var reminderTime = new Date(todo.reminder.datetime);
-            if (reminderTime <= now) return;
-            todo.paused = !todo.paused;
-            saveConfigToBackend();
-            renderTodos();
-        });
-    });
 }
 
 function toggleTodoDone(id) {
@@ -2341,9 +2113,10 @@ function openTodoEditModal(id) {
             todo.repeat = fields.repeat;
             if (fields.reminder) {
                 if (!todo.reminder) {
-                    todo.reminder = { datetime: fields.reminder, sound: true, day_mode: 'fixed', workday_time: null, restday_time: null };
+                    todo.reminder = { datetime: fields.reminder.datetime, sound: true, day_mode: fields.reminder.day_mode || 'fixed', workday_time: null, restday_time: null };
                 } else {
-                    todo.reminder.datetime = fields.reminder;
+                    todo.reminder.datetime = fields.reminder.datetime;
+                    todo.reminder.day_mode = fields.reminder.day_mode || 'fixed';
                 }
                 if (fields.repeat === 'daily') {
                     todo.reminder.workday_time = overlay.querySelector('#editWorkdayTime').value || null;
@@ -2881,10 +2654,8 @@ function renderLogPanel() {
             + String(d.getSeconds()).padStart(2,'0') + '.'
             + String(d.getMilliseconds()).padStart(3,'0');
         var lv = e.level;
-        var src = e.source || '';
-        var msg = e.message;
-        msg = msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        src = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        var msg = escapeHtml(e.message);
+        var src = escapeHtml(e.source || '');
         html += '<div class="log-entry">'
             + '<span class="log-entry-time">' + time + '</span>'
             + '<span class="log-entry-level L_' + lv + '">' + lv + '</span>'

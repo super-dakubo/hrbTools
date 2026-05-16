@@ -216,11 +216,11 @@ body {
 .tab-bar {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 20px 12px;
-    background: var(--tab-bar-bg);
-    border-right: 1px solid var(--input-bg);
-    width: 80px;
+    gap: 10px;
+    padding: 24px 8px;
+    background: transparent;
+    border-right: 1px solid var(--border);
+    width: 64px;
     flex-shrink: 0;
 }
 
@@ -230,13 +230,13 @@ body {
     align-items: center;
     justify-content: center;
     gap: 4px;
-    padding: 14px 8px;
+    padding: 12px 4px;
     background: transparent;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     cursor: pointer;
     color: var(--text-secondary);
-    transition: background 0.2s, color 0.2s, opacity 0.15s, margin 0.2s;
+    transition: background 0.2s, color 0.2s, opacity 0.15s;
     width: 100%;
 }
 
@@ -252,17 +252,18 @@ body {
 }
 
 .tab:hover {
-    background: var(--input-bg);
-    color: var(--text-secondary);
-}
-
-.tab.active {
-    background: var(--surface-hover);
+    background: rgba(255,255,255,0.05);
     color: var(--text);
 }
 
-.tab-icon { font-size: 1.5rem; line-height: 1; }
-.tab-label { font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
+.tab.active {
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    color: var(--text);
+}
+
+.tab-icon { font-size: 1.8rem; line-height: 1; }
 
 /* ==================== 右侧内容区 ==================== */
 .content {
