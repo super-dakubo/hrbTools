@@ -2268,12 +2268,20 @@ document.addEventListener('DOMContentLoaded', async function() {
                     area.appendChild(more);
                 }
             };
-            window.__onReminderFired = null; // 预留，当前由 Rust 线程推送系统通知
+            window.__onOneTimeReminderDone = function(id, text) {
+                window.__bannerQueue.push({ text: '⏰ ' + text, id: ++window.__bannerIdSeq, todoId: id });
+                window.__renderBanners();
+                invoke('get_config').then(function(fresh) {
+                    currentConfig.todos = fresh.todos;
+                    renderTodos();
+                }).catch(function() {});
+            };
 
-            // 启动时扫描过期提醒，展示横幅（跳过已被关闭的）
+            // 启动时扫描过期提醒，展示横幅并将一次性待办标记完成
             (function() {
                 var now = new Date();
                 var items = [];
+                var needSave = false;
                 (currentConfig.todos || []).forEach(function(t) {
                     if (t.done || !t.reminder || !t.reminder.datetime) return;
                     // 跳过已被用户关闭过的提醒
@@ -2281,14 +2289,32 @@ document.addEventListener('DOMContentLoaded', async function() {
                     var rt = new Date(t.reminder.datetime);
                     if (!isNaN(rt) && rt <= now) {
                         items.push({ text: '⏰ ' + t.text, todoId: t.id });
+                        // 一次性待办启动时自动标记完成
+                        if (!t.repeat && t.reminder.datetime && t.reminder.datetime.includes('T')) {
+                            t.done = true;
+                            t.last_notified = Date.now();
+                            needSave = true;
+                        }
                     }
                 });
                 items.forEach(function(item) {
                     window.__bannerQueue.push({ text: item.text, id: ++window.__bannerIdSeq, todoId: item.todoId });
                 });
                 window.__renderBanners();
-                if (items.length > 0) {
-                    invoke('get_config').then(function(fresh) {
+
+                // 先保存再刷新，避免竞态
+                var refreshPromise;
+                if (needSave) {
+                    refreshPromise = saveConfigToBackend().catch(function(e) {
+                        window.__log.error('启动扫描保存失败: ' + e);
+                    }).then(function() {
+                        return invoke('get_config');
+                    });
+                } else if (items.length > 0) {
+                    refreshPromise = invoke('get_config');
+                }
+                if (refreshPromise) {
+                    refreshPromise.then(function(fresh) {
                         currentConfig.todos = fresh.todos;
                         renderTodos();
                     }).catch(function() {});
