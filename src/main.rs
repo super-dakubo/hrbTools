@@ -179,6 +179,10 @@ struct AppConfig {
     reminder_enabled: bool,
     #[serde(default)]
     holiday_data: Vec<HolidayYearConfig>,
+    #[serde(default)]
+    banners: Vec<BannerEntry>,
+    #[serde(default)]
+    pending_reminders: Vec<PendingReminder>,
 }
 
 fn default_theme() -> String { "system".to_string() }
@@ -202,6 +206,8 @@ impl Default for AppConfig {
             minimize_to_tray: true,
             reminder_enabled: true,
             holiday_data: vec![],
+            banners: vec![],
+            pending_reminders: vec![],
         }
     }
 }
@@ -254,6 +260,31 @@ struct ReminderConfig {
     sound: bool,
     #[serde(default)]
     day_mode: String,   // "fixed" | "last" | "second_last" | "third_last"，仅 monthly 有效
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct BannerEntry {
+    id: String,
+    todo_id: String,
+    text: String,
+    created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PendingReminder {
+    id: String,
+    todo_id: String,
+    text: String,
+    fire_at: i64,
+    sound: bool,
+    #[serde(default)]
+    repeat: Option<String>,
+    #[serde(default)]
+    workday_time: Option<String>,
+    #[serde(default)]
+    restday_time: Option<String>,
+    #[serde(default)]
+    day_mode: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
