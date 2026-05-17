@@ -1813,10 +1813,11 @@ fn main() {
                                     let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
                                 }
                                 write_log(&app_handle, "窗口已置顶并闪烁任务栏");
-                                let safe_text = todo.text.replace('\'', "\\'");
+                                let safe_id = todo.id.replace('\\', "\\\\").replace('\'', "\\'");
+                                let safe_text = todo.text.replace('\\', "\\\\").replace('\'', "\\'");
                                 let _ = w.eval(&format!(
                                     r#"try{{window.__onOneTimeReminderDone('{}','{}')}}catch(e){{}}"#,
-                                    todo.id.replace('\'', "\\'"),
+                                    safe_id,
                                     safe_text
                                 ));
                                 write_log(&app_handle, "eval 完成");
