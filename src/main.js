@@ -1582,47 +1582,6 @@ function autoClearExpiredPaused() {
     return changed;
 }
 
-function advanceExpiredReminders() {
-    var now = new Date();
-    var changed = false;
-    (currentConfig.todos || []).forEach(function(t) {
-        if (t.done || !t.repeat) return;
-        if (t.due_date) {
-            var due = new Date(t.due_date);
-            if (due <= now) {
-                var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                if (t.repeat === 'daily') next.setDate(next.getDate() + 1);
-                else if (t.repeat === 'weekly') next.setDate(next.getDate() + 7);
-                else if (t.repeat === 'monthly') next = safeAddMonth(next);
-                t.due_date = next.toISOString().slice(0, 10);
-                changed = true;
-            }
-        }
-        if (t.reminder && t.reminder.datetime) {
-            var rt = new Date(t.reminder.datetime);
-            if (rt <= now) {
-                t.last_notified = Date.now();
-                if (t.repeat === 'daily') {
-                    var next = calculateNextReminderDate('daily',
-                        t.reminder.workday_time,
-                        t.reminder.restday_time);
-                    if (next) t.reminder.datetime = next;
-                } else if (t.repeat === 'weekly') {
-                    var r = new Date(t.reminder.datetime);
-                    r.setDate(r.getDate() + 7);
-                    t.reminder.datetime = r.toISOString().slice(0, 16);
-                } else if (t.repeat === 'monthly') {
-                    var r = new Date(t.reminder.datetime);
-                    r = safeAddMonth(r);
-                    t.reminder.datetime = r.toISOString().slice(0, 16);
-                }
-                changed = true;
-            }
-        }
-    });
-    if (changed) saveConfigToBackend();
-}
-
 function renderTodos() {
     var t0 = performance.now();
     if (autoClearExpiredPaused()) saveConfigToBackend();
@@ -1742,7 +1701,6 @@ function createNextRepeat(todo) {
     newTodo.id = crypto.randomUUID();
     newTodo.done = false;
     newTodo.created_at = new Date().toISOString().slice(0, 16);
-    newTodo.last_notified = null;
 
     // 推 reminder 和 due_date
     if (newTodo.due_date && todo.repeat) {
@@ -2036,11 +1994,10 @@ function openTodoEditModal(id) {
             repeat: null,
             sort_order: currentConfig.todos.length,
             created_at: new Date().toISOString().slice(0, 16),
-            last_notified: null,
         };
     }
 
-    var oldEl = document.querySelector('.todo-edit-overlay');
+var oldEl = document.querySelector('.todo-edit-overlay');
     if (oldEl) oldEl.remove();
 
     var priorityLabels = ['低', '中', '高'];
@@ -2331,6 +2288,44 @@ function openTodoEditModal(id) {
     });
 }
 
+function renderBanners() {
+    var area = document.getElementById('bannerArea');
+    if (!area) return;
+    var banners = currentConfig.banners || [];
+    var maxShow = 2;
+    var visible = banners.slice(0, maxShow);
+    var hiddenCount = banners.length - maxShow;
+    area.innerHTML = '';
+    if (banners.length === 0) {
+        area.classList.remove('has-banners');
+        return;
+    }
+    area.classList.add('has-banners');
+    visible.forEach(function(item) {
+        var row = document.createElement('div');
+        row.className = 'banner-item';
+        var span = document.createElement('span');
+        span.textContent = item.text || '';
+        row.appendChild(span);
+        var btn = document.createElement('button');
+        btn.className = 'banner-item-close';
+        btn.innerHTML = '&times;';
+        btn.addEventListener('click', function() {
+            currentConfig.banners = currentConfig.banners.filter(function(b) { return b.id !== item.id; });
+            saveConfigToBackend();
+            renderBanners();
+        });
+        row.appendChild(btn);
+        area.appendChild(row);
+    });
+    if (hiddenCount > 0) {
+        var more = document.createElement('div');
+        more.style.cssText = 'text-align:center;padding:4px;font-size:0.75rem;color:var(--text-secondary);';
+        more.textContent = '还有 ' + hiddenCount + ' 条提醒';
+        area.appendChild(more);
+    }
+}
+
 // ==================== 启动 ====================
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -2359,116 +2354,23 @@ document.addEventListener('DOMContentLoaded', async function() {
             // 第四步：一次性事件委托，替代每次渲染后重新绑定监听器
             setupEventDelegation();
 
-            // 第五步：初始化提醒横幅队列系统 + 定义后台回调
-            window.__bannerQueue = [];
-            window.__bannerIdSeq = 0;
-            window.__renderBanners = function() {
-                var area = document.getElementById('bannerArea');
-                if (!area) return;
-                var maxShow = 2;
-                var visible = window.__bannerQueue.slice(0, maxShow);
-                var hiddenCount = window.__bannerQueue.length - maxShow;
-                area.innerHTML = '';
-                if (window.__bannerQueue.length === 0) {
-                    area.classList.remove('has-banners');
-                    return;
-                }
-                area.classList.add('has-banners');
-                visible.forEach(function(item) {
-                    var row = document.createElement('div');
-                    row.className = 'banner-item';
-                    var span = document.createElement('span');
-                    span.className = 'banner-item-text';
-                    span.textContent = item.text;
-                    row.appendChild(span);
-                    var btn = document.createElement('button');
-                    btn.className = 'banner-item-close';
-                    btn.innerHTML = '&times;';
-                    btn.addEventListener('click', function() {
-                        var idx = window.__bannerQueue.indexOf(item);
-                        if (idx !== -1) window.__bannerQueue.splice(idx, 1);
-                        window.__renderBanners();
-                        // 不保存配置：Rust 线程已持久化 done/last_notified
-                    });
-                    row.appendChild(btn);
-                    area.appendChild(row);
+            // 第五步：横幅系统（从 config.banners 读取）
+            renderBanners();
+
+            window.__onReminderFired = function() {
+                invoke('get_config').then(function(fresh) {
+                    currentConfig = fresh;
+                    renderBanners();
+                    if (currentTab === 'todo') renderTodos();
+                }).catch(function(e) {
+                    window.__log.error('重新拉取配置失败: ' + e);
                 });
-                if (hiddenCount > 0) {
-                    var more = document.createElement('div');
-                    more.className = 'banner-item';
-                    more.style.background = 'rgba(229,57,53,0.7)';
-                    more.style.fontSize = '12px';
-                    more.style.padding = '4px 16px';
-                    more.style.justifyContent = 'center';
-                    more.textContent = '还有 ' + hiddenCount + ' 条提醒';
-                    area.appendChild(more);
-                }
-            };
-            window.__onReminderFired = function(id, text) {
-                window.__bannerQueue.push({ text: '⏰ ' + text, id: ++window.__bannerIdSeq, todoId: id });
-                window.__renderBanners();
-                // 本地更新待办状态，不重新拉取（Rust 端 save_config 在 for 循环后才执行，磁盘数据尚未更新）
-                var todo = (currentConfig.todos || []).find(function(t) { return t.id === id; });
-                if (todo) {
-                    // 仅一次性待办标记完成，周期性待办保留原状态
-                    if (!todo.repeat) {
-                        todo.done = true;
-                        todo.completed_at = new Date().toISOString();
-                    }
-                    todo.last_notified = Date.now();
-                }
-                if (currentTab === 'todo') {
-                    renderTodos();
-                }
             };
 
-            // 启动前先推周期任务，避免过期提醒误触横幅/声音
-            advanceExpiredReminders();
-
-            // 启动时扫描过期提醒，展示横幅并将一次性待办标记完成
-            (function() {
-                var now = new Date();
-                var items = [];
-                var needSave = false;
-                (currentConfig.todos || []).forEach(function(t) {
-                    if (t.done || !t.reminder || !t.reminder.datetime) return;
-                    // 跳过已被用户关闭过的提醒
-                    if (t.last_notified) return;
-                    var rt = new Date(t.reminder.datetime);
-                    if (!isNaN(rt) && rt <= now) {
-                        items.push({ text: '⏰ ' + t.text, todoId: t.id });
-                        // 一次性待办启动时自动标记完成
-                        if (!t.repeat && t.reminder.datetime && t.reminder.datetime.includes('T')) {
-                            t.done = true;
-                            t.completed_at = new Date().toISOString();
-                            t.last_notified = Date.now();
-                            needSave = true;
-                        }
-                    }
-                });
-                items.forEach(function(item) {
-                    window.__bannerQueue.push({ text: item.text, id: ++window.__bannerIdSeq, todoId: item.todoId });
-                });
-                window.__renderBanners();
-
-                // 先保存再刷新，避免竞态
-                var refreshPromise;
-                if (needSave) {
-                    refreshPromise = saveConfigToBackend().catch(function(e) {
-                        window.__log.error('启动扫描保存失败: ' + e);
-                    }).then(function() {
-                        return invoke('get_config');
-                    });
-                } else if (items.length > 0) {
-                    refreshPromise = invoke('get_config');
-                }
-                if (refreshPromise) {
-                    refreshPromise.then(function(fresh) {
-                        currentConfig.todos = fresh.todos;
-                        renderTodos();
-                    }).catch(function() {});
-                }
-            })();
+            // 同步待提醒列表（为有提醒的待办创建 pending_reminders）
+            syncPendingReminders();
+            // 展示横幅（从 config.banners 读取）
+            renderBanners();
 
             // 填充年份下拉
             (function populateHolidayYears() {
