@@ -104,31 +104,29 @@ def make_icon_pixels(w, h, radius, bg_top_hex, bg_bot_hex, fg_hex):
     return bytes(pixels)
 
 
-# --- Generate icons ---
-output_dir = r'd:\code\hello_world\icons'
+if __name__ == '__main__':
+    # --- Generate icons ---
+    output_dir = r'd:\code\hello_world\icons'
 
-# 128x128
-print("Generating 128x128.png...")
-px128 = make_icon_pixels(128, 128, 28, '4b8bf4', '2563eb', 'ffffff')
-with open(os.path.join(output_dir, '128x128.png'), 'wb') as f:
-    f.write(create_png(128, 128, px128))
+    # 128x128
+    print("Generating 128x128.png...")
+    px128 = make_icon_pixels(128, 128, 28, '4b8bf4', '2563eb', 'ffffff')
+    with open(os.path.join(output_dir, '128x128.png'), 'wb') as f:
+        f.write(create_png(128, 128, px128))
 
-# 32x32
-print("Generating 32x32.png...")
-px32 = make_icon_pixels(32, 32, 6, '4b8bf4', '2563eb', 'ffffff')
-with open(os.path.join(output_dir, '32x32.png'), 'wb') as f:
-    f.write(create_png(32, 32, px32))
+    # 32x32
+    print("Generating 32x32.png...")
+    px32 = make_icon_pixels(32, 32, 6, '4b8bf4', '2563eb', 'ffffff')
+    with open(os.path.join(output_dir, '32x32.png'), 'wb') as f:
+        f.write(create_png(32, 32, px32))
 
-# icon.ico - embed 32x32 PNG as ICO
-print("Generating icon.ico...")
-ico_data = struct.pack('<HHH', 0, 1, 1)  # reserved, type=icon, count=1
+    # icon.ico - embed 32x32 PNG as ICO
+    print("Generating icon.ico...")
+    png_data = create_png(32, 32, px32)
+    entry = struct.pack('<BBBBHHII', 32, 32, 0, 0, 1, 32, len(png_data), 22)
+    ico_data = struct.pack('<HHH', 0, 1, 1) + entry + png_data
 
-# Re-use the 32x32 PNG data
-png_data = create_png(32, 32, px32)
-entry = struct.pack('<BBBBHHII', 32, 32, 0, 0, 1, 32, len(png_data), 22)
-ico_data = struct.pack('<HHH', 0, 1, 1) + entry + png_data
+    with open(os.path.join(output_dir, 'icon.ico'), 'wb') as f:
+        f.write(ico_data)
 
-with open(os.path.join(output_dir, 'icon.ico'), 'wb') as f:
-    f.write(ico_data)
-
-print("Done! All icons generated.")
+    print("Done! All icons generated.")
