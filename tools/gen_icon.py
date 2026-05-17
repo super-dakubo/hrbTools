@@ -26,14 +26,23 @@ def create_png(width, height, pixels_rgba):
 def hex_to_rgb(h):
     return (int(h[0:2],16), int(h[2:4],16), int(h[4:6],16))
 
-def make_icon_pixels(w, h, radius, bg_hex, fg_hex):
-    """Create RGBA pixel buffer for rounded rect with centered H."""
-    bg = hex_to_rgb(bg_hex)
+def lerp_color(c1, c2, t):
+    """Linearly interpolate between two RGB colors."""
+    return (int(c1[0] + (c2[0] - c1[0]) * t),
+            int(c1[1] + (c2[1] - c1[1]) * t),
+            int(c1[2] + (c2[2] - c1[2]) * t))
+
+def make_icon_pixels(w, h, radius, bg_top_hex, bg_bot_hex, fg_hex):
+    """Create RGBA pixel buffer for rounded rect with vertical gradient and centered H."""
+    bg_top = hex_to_rgb(bg_top_hex)
+    bg_bot = hex_to_rgb(bg_bot_hex)
     fg = hex_to_rgb(fg_hex)
 
     pixels = bytearray(w * h * 4)
 
     for y in range(h):
+        t = y / (h - 1) if h > 1 else 0
+        bg = lerp_color(bg_top, bg_bot, t)
         for x in range(w):
             dx = min(x, w-1-x)
             dy = min(y, h-1-y)
@@ -100,13 +109,13 @@ output_dir = r'd:\code\hello_world\icons'
 
 # 128x128
 print("Generating 128x128.png...")
-px128 = make_icon_pixels(128, 128, 28, '4b8bf4', 'ffffff')
+px128 = make_icon_pixels(128, 128, 28, '4b8bf4', '2563eb', 'ffffff')
 with open(os.path.join(output_dir, '128x128.png'), 'wb') as f:
     f.write(create_png(128, 128, px128))
 
 # 32x32
 print("Generating 32x32.png...")
-px32 = make_icon_pixels(32, 32, 6, '4b8bf4', 'ffffff')
+px32 = make_icon_pixels(32, 32, 6, '4b8bf4', '2563eb', 'ffffff')
 with open(os.path.join(output_dir, '32x32.png'), 'wb') as f:
     f.write(create_png(32, 32, px32))
 
