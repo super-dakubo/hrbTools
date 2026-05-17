@@ -46,14 +46,16 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 **无边框窗口**（`decorations: false`），自定义标题栏，左侧 Tab 栏（支持鼠标拖拽排序）。面板切换必须用 `position: absolute` + `opacity` 合成层，禁止 `display: none/block`（避免布局重算）。
 
+**根字号：** `html { font-size: 18px }`（默认 16px），所有 `rem` 值以此基准缩放。
+
 ### 源文件一览
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
 | [src/index.html](src/index.html) | 200 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置，设置已从弹窗改为第 5 面板） |
-| [src/styles.css](src/styles.css) | 1945 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式 |
-| [src/main.js](src/main.js) | 2796 | 全部前端逻辑，`// ===` 分隔 23 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | 1879 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
+| [src/styles.css](src/styles.css) | 1945 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
+| [src/main.js](src/main.js) | 2805 | 全部前端逻辑，`// ===` 分隔 23 区块 + 事件委托 |
+| [src/main.rs](src/main.rs) | 1921 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
 
 ### AppConfig 持久化
 
@@ -65,6 +67,10 @@ AppConfig { backup_root, games: Vec<GameConfig>, timezone_sets, theme, tab_order
 GameConfig { id: UUID, name, slots: Vec<SlotConfig>, pinned }
 SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_file_patterns: Vec<String> }
 ```
+
+### set_auto_start 条件执行（重要）
+
+`set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。这是性能关键——`reg.exe` 子进程在 GUI 应用中约 3.3 秒开销。任何时候修改 `set_config` 保存路径，都不要无条件调 `set_auto_start`。
 
 ### 前端（src/main.js）分区
 
@@ -119,6 +125,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 ### 待办编辑弹窗
 
 - **无保存/取消按钮** — 修改即自动保存（300ms debounce 的 `autoSave()`）
+- **`_saveInProgress` 防重叠** — `autoSave()` 中 `saveConfigToBackend()` 未完成时跳过后续 keystroke 触发的保存，避免 IPC 堆积。修改此逻辑时注意保持此保护
 - **关闭方式** — 仅右上角 X 按钮，`closeModal()` 自动清理空的新建待办
 - **滚动隔离** — modal 为 flex 容器，仅 `.todo-edit-body` 区域可滚动，header 固定顶部不参与滚动
 - **新建流程** — 点"添加待办"打开空弹窗，`autoSave` 首次保存时生成 `crypto.randomUUID()` 并写入配置
@@ -129,6 +136,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 - 写操作必须返回 `OpResult { success: bool, message: string }`
 - 新增命令必须在 `main()` 的 `.invoke_handler(tauri::generate_handler![...])` 中注册
 - `setup()` 中初始化：**系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每 5 秒轮询 config.json，检查待办提醒时间并发送通知）
+- **`sanitize_path_component()`** — 所有从 `game_id`/`slot_id`/`folder_name` 等用户参数构建文件系统路径的命令，必须先调用此函数检查路径穿越
 
 ### 约束
 

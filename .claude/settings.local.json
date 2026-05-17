@@ -2,7 +2,7 @@
   "hooks": {
     "UserPromptSubmit": [
       {
-        "matcher": "(?i)(\\brust(c|fmt|up|-analyzer)?\\b|\\bcargo\\b|\\.rs\\b|E0\\d{3,4}|\\bownership\\b|\\b(borrowe?d?|borrowing)\\b|\\blifetime[s]?\\b|cannot\\s+(borrow|move)|does not live long enough|mismatched types|\\bunsafe\\b|\\btrait\\b|\\benum\\b|\\bstruct\\b|\\bimpl\\b|\\b(Arc|Rc|RefCell|Box|Vec|HashMap|Mutex|RwLock)\\s*<|AppConfig|load_config|save_config|OpResult|invoke_handler|tauri::|\\brustfmt\\b|\\bclippy\\b|\\btokio\\b|\\baxum\\b|\\bserde\\b|\\bchrono\\b|notify-rust|\\brfd\\b|所有权|借用|生命周期|异步|并发)",
+        "matcher": "(?i)(\\brust(c|fmt|up|-analyzer)?\\b|\\bcargo\\b|\\.rs\\b|E0\\d{3,4}|\\bownership\\b|\\b(borrowe?d?|borrowing)\\b|\\blifetime[s]?\\b|cannot\\s+(borrow|move)|does not live long enough|mismatched types|\\bunsafe\\b|load_config|save_config|OpResult|invoke_handler|tauri::|\\brustfmt\\b|\\bclippy\\b|\\bserde\\b|\\bchrono\\b|notify-rust|\\brfd\\b|\\bcargo\\s+check|\\bcargo\\s+build|\\bcargo\\s+test|\\bcargo\\s+tauri)",
         "hooks": [
           {
             "type": "command",
