@@ -4,7 +4,6 @@
 use chrono::{NaiveDateTime, DateTime, Utc, TimeZone};
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::io::{Write, BufReader, BufWriter, Read};
 use std::path::PathBuf;
@@ -240,8 +239,6 @@ struct TodoItem {
     sort_order: i32,
     #[serde(default)]
     created_at: String,
-    #[serde(default)]
-    last_notified: Option<i64>,
     #[serde(default)]
     completed_at: Option<String>,
     #[serde(default)]
@@ -1643,7 +1640,6 @@ fn main() {
             write_log(&app_handle, "提醒线程启动");
             std::thread::spawn(move || {
                 let mut last_reminder_log_sec = 0i64;
-                let mut fired_cooldown: HashMap<String, i64> = HashMap::new();
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     let config_path = match app_handle.path().app_data_dir() {
@@ -1751,18 +1747,6 @@ fn main() {
                                 write_log(&app_handle, "一次性提醒已过时超过5秒，跳过触发以保留提醒数据");
                                 continue;
                             }
-                            let last = todo.last_notified.unwrap_or(0);
-                            if now - last < 60000 {
-                                write_log(&app_handle, &format!("60秒防重复，跳过 '{}'", todo.text));
-                                continue;
-                            }
-                            // 内存冷却检查：即使前端 save 失败也防止重复触发
-                            const COOLDOWN_MS: i64 = 300_000;
-                            let last_fired = fired_cooldown.get(&todo.id).copied().unwrap_or(0);
-                            if now - last_fired < COOLDOWN_MS {
-                                write_log(&app_handle, &format!("内存冷却中(5min)，跳过 '{}'", todo.text));
-                                continue;
-                            }
                             write_log(&app_handle, &format!("*** 触发提醒: '{}' ***", todo.text));
                             write_log(&app_handle, "notify_rust.show() 调用");
                             let _ = notify_rust::Notification::new()
@@ -1866,13 +1850,11 @@ fn main() {
                                     sound: reminder.sound,
                                     day_mode: reminder.day_mode.clone(),
                                 });
-                                todo.last_notified = Some(now);
                                 reminder_fired = true;
                             } else {
                                 // 一次性提醒：标记完成
                                 todo.done = true;
                                 todo.completed_at = Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
-                                todo.last_notified = Some(now);
                                 reminder_fired = true;
                             }
                             if play_sound {
@@ -1904,7 +1886,6 @@ fn main() {
                             } else {
                                 write_log(&app_handle, "获取窗口失败！");
                             }
-                            fired_cooldown.insert(todo.id.clone(), now);
                         } else {
                             write_log(&app_handle, "提醒时间未到");
                         }
