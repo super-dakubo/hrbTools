@@ -347,6 +347,41 @@ body.light .win-close:hover .win-ctrl-icon { color: #fff; }
     margin: 0 0 0 12px;
 }
 
+/* 设置卡片分组 */
+.settings-group {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    background: var(--surface);
+}
+.settings-group.holiday {
+    background: rgba(139, 92, 246, 0.03);
+    border-color: rgba(139, 92, 246, 0.15);
+}
+.settings-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-sm);
+    font-weight: 600;
+    color: var(--text);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+body.light .settings-group.holiday {
+    background: rgba(139, 92, 246, 0.03);
+    border-color: rgba(139, 92, 246, 0.2);
+}
+/* 调整 .input-group 在卡片内的边距 */
+.settings-group .input-group {
+    margin-bottom: 0;
+}
+.settings-group .input-group + .input-group {
+    margin-top: 10px;
+}
+
 /* 节假日年行 */
 .holiday-year-row {
     display: flex;

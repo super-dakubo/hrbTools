@@ -147,45 +147,53 @@
                 <div class="settings-header">
                     <h1 class="settings-title">&#9881;&#65039; 设置</h1>
                 </div>
-                <div class="input-group">
-                    <label>备份根目录</label>
-                    <div class="row">
-                        <span id="settingsBackupRoot" class="path-hint">未设置</span>
-                        <button id="settingsSetDirBtn" class="btn-small">更改</button>
-                        <button id="settingsOpenDirBtn" class="btn-small">打开</button>
+
+                <div class="settings-group">
+                    <div class="settings-group-header">&#9881; 通用设置</div>
+                    <div class="input-group">
+                        <label>备份根目录</label>
+                        <div class="row">
+                            <span id="settingsBackupRoot" class="path-hint">未设置</span>
+                            <button id="settingsSetDirBtn" class="btn-small">更改</button>
+                            <button id="settingsOpenDirBtn" class="btn-small">打开</button>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>主题模式</label>
+                        <div id="themeSlider" class="theme-slider" data-pos="0">
+                            <div class="theme-indicator"></div>
+                            <span class="opt" data-theme="system">🌓 跟随系统</span>
+                            <span class="opt" data-theme="dark">🌙 暗色</span>
+                            <span class="opt" data-theme="light">☀️ 亮色</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <div class="row" style="justify-content:space-between;margin-top:12px;">
+                            <label style="margin:0;">开机自启</label>
+                            <span class="toggle-switch" id="autoStartToggle" data-state="off"><span class="toggle-thumb"></span></span>
+                        </div>
+                        <div class="row" style="justify-content:space-between;margin-top:8px;">
+                            <label style="margin:0;">最小化到托盘</label>
+                            <span class="toggle-switch" id="trayToggle" data-state="on"><span class="toggle-thumb"></span></span>
+                        </div>
+                        <div class="row" style="justify-content:space-between;margin-top:8px;">
+                            <label style="margin:0;">启用提醒</label>
+                            <span class="toggle-switch" id="reminderToggle" data-state="on"><span class="toggle-thumb"></span></span>
+                        </div>
                     </div>
                 </div>
-                <div class="input-group">
-                    <label>主题模式</label>
-                    <div id="themeSlider" class="theme-slider" data-pos="0">
-                        <div class="theme-indicator"></div>
-                        <span class="opt" data-theme="system">🌓 跟随系统</span>
-                        <span class="opt" data-theme="dark">🌙 暗色</span>
-                        <span class="opt" data-theme="light">☀️ 亮色</span>
+
+                <div class="settings-group holiday">
+                    <div class="settings-group-header">&#128197; 节假日配置</div>
+                    <div class="input-group">
+                        <div id="holidayYearsList"></div>
+                        <div class="row" style="margin-top:8px;">
+                            <select id="holidayYearSelect" class="holiday-year-select"></select>
+                            <button id="holidayAddBtn" class="btn-small">添加</button>
+                        </div>
                     </div>
                 </div>
-                <div class="input-group">
-                    <div class="row" style="justify-content:space-between;margin-top:12px;">
-                        <label style="margin:0;">开机自启</label>
-                        <span class="toggle-switch" id="autoStartToggle" data-state="off"><span class="toggle-thumb"></span></span>
-                    </div>
-                    <div class="row" style="justify-content:space-between;margin-top:8px;">
-                        <label style="margin:0;">最小化到托盘</label>
-                        <span class="toggle-switch" id="trayToggle" data-state="on"><span class="toggle-thumb"></span></span>
-                    </div>
-                    <div class="row" style="justify-content:space-between;margin-top:8px;">
-                        <label style="margin:0;">启用提醒</label>
-                        <span class="toggle-switch" id="reminderToggle" data-state="on"><span class="toggle-thumb"></span></span>
-                    </div>
-                </div>
-                <div class="input-group">
-                    <label>节假日配置</label>
-                    <div id="holidayYearsList"></div>
-                    <div class="row" style="margin-top:8px;">
-                        <select id="holidayYearSelect" class="holiday-year-select"></select>
-                        <button id="holidayAddBtn" class="btn-small">添加</button>
-                    </div>
-                </div>
+
                 <div class="settings-hint">更多设置项将陆续添加</div>
             </div>
         </div>
