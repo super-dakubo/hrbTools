@@ -1279,19 +1279,24 @@ function openHolidayEditor(year) {
     var existing = (currentConfig.holiday_data || []).find(function(h) { return h.year === year; });
     var defaultText = existing ? JSON.stringify(existing, null, 2) : getTemplateJSON(year);
 
-    editor.style.display = 'block';
+    editor.style.display = 'flex';
     editor.innerHTML = ''
-        + '<div class="holiday-editor-panel">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        + '<strong>' + year + '年 节假日配置</strong>'
+        + '<div class="modal" style="width:520px;">'
+        + '<div class="modal-header">'
+        + '<span class="modal-title">' + year + '年 节假日配置</span>'
+        + '<div style="display:flex;gap:6px;">'
         + '<button class="btn-small" id="holidayCopyTemplate">复制模板</button>'
+        + '<button class="modal-close" id="holidayCancelBtn">&times;</button>'
         + '</div>'
+        + '</div>'
+        + '<div class="modal-body">'
         + '<textarea id="holidayJsonInput" class="holiday-json-input" placeholder="编辑 JSON 配置">'
         + escapeHtml(defaultText) + '</textarea>'
-        + '<div id="holidayPreview" style="margin-top:8px;"></div>'
-        + '<div style="margin-top:8px;display:flex;gap:8px;">'
-        + '<button class="btn-small" id="holidaySaveBtn" style="display:none;">确认保存</button>'
-        + '<button class="btn-small" id="holidayCancelBtn">取消</button>'
+        + '<div id="holidayPreview" style="margin-top:12px;"></div>'
+        + '<div style="margin-top:12px;display:flex;gap:8px;">'
+        + '<button class="btn-small btn-primary" id="holidaySaveBtn" style="display:none;">确认保存</button>'
+        + '<button class="btn-small" id="holidayCancelBtn2">取消</button>'
+        + '</div>'
         + '</div>'
         + '</div>';
 
@@ -1306,6 +1311,9 @@ function openHolidayEditor(year) {
     });
 
     document.getElementById('holidayCancelBtn').addEventListener('click', function() {
+        editor.style.display = 'none';
+    });
+    document.getElementById('holidayCancelBtn2').addEventListener('click', function() {
         editor.style.display = 'none';
     });
 
@@ -1572,6 +1580,47 @@ function autoClearExpiredPaused() {
         }
     });
     return changed;
+}
+
+function advanceExpiredReminders() {
+    var now = new Date();
+    var changed = false;
+    (currentConfig.todos || []).forEach(function(t) {
+        if (t.done || !t.repeat) return;
+        if (t.due_date) {
+            var due = new Date(t.due_date);
+            if (due <= now) {
+                var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                if (t.repeat === 'daily') next.setDate(next.getDate() + 1);
+                else if (t.repeat === 'weekly') next.setDate(next.getDate() + 7);
+                else if (t.repeat === 'monthly') next = safeAddMonth(next);
+                t.due_date = next.toISOString().slice(0, 10);
+                changed = true;
+            }
+        }
+        if (t.reminder && t.reminder.datetime) {
+            var rt = new Date(t.reminder.datetime);
+            if (rt <= now) {
+                t.last_notified = Date.now();
+                if (t.repeat === 'daily') {
+                    var next = calculateNextReminderDate('daily',
+                        t.reminder.workday_time,
+                        t.reminder.restday_time);
+                    if (next) t.reminder.datetime = next;
+                } else if (t.repeat === 'weekly') {
+                    var r = new Date(t.reminder.datetime);
+                    r.setDate(r.getDate() + 7);
+                    t.reminder.datetime = r.toISOString().slice(0, 16);
+                } else if (t.repeat === 'monthly') {
+                    var r = new Date(t.reminder.datetime);
+                    r = safeAddMonth(r);
+                    t.reminder.datetime = r.toISOString().slice(0, 16);
+                }
+                changed = true;
+            }
+        }
+    });
+    if (changed) saveConfigToBackend();
 }
 
 function renderTodos() {
@@ -1896,6 +1945,52 @@ function calculateNextReminderDate(repeat, workdayTime, restdayTime) {
     return '';
 }
 
+function calculateFireAt(todo) {
+    if (todo.repeat === 'daily') {
+        var next = calculateNextReminderDate('daily',
+            todo.reminder.workday_time,
+            todo.reminder.restday_time);
+        return next ? new Date(next).getTime() : null;
+    }
+    if (todo.reminder && todo.reminder.datetime) {
+        return new Date(todo.reminder.datetime).getTime();
+    }
+    return null;
+}
+
+function syncPendingReminders() {
+    currentConfig.pending_reminders = currentConfig.pending_reminders || [];
+    var changed = false;
+    (currentConfig.todos || []).forEach(function(t) {
+        if (t.done || t.paused || !t.reminder) {
+            var had = currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; });
+            if (had) {
+                currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return r.todo_id !== t.id; });
+                changed = true;
+            }
+            return;
+        }
+        if (currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; })) return;
+
+        var fireAt = calculateFireAt(t);
+        if (!fireAt) return;
+
+        currentConfig.pending_reminders.push({
+            id: crypto.randomUUID(),
+            todo_id: t.id,
+            text: t.text,
+            fire_at: fireAt,
+            sound: t.reminder.sound || false,
+            repeat: t.repeat || null,
+            workday_time: t.reminder.workday_time || null,
+            restday_time: t.reminder.restday_time || null,
+            day_mode: t.reminder.day_mode || '',
+        });
+        changed = true;
+    });
+    if (changed) saveConfigToBackend();
+}
+
 function updateReminderSummary() {
     var el = document.getElementById('reminderSummaryText');
     if (!el) return;
@@ -2193,6 +2288,7 @@ function openTodoEditModal(id) {
             _saveInProgress = true;
             saveConfigToBackend().then(function() {
                 _saveInProgress = false;
+                syncPendingReminders();
             }).catch(function() {
                 _saveInProgress = false;
             });
@@ -2325,6 +2421,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                     renderTodos();
                 }
             };
+
+            // 启动前先推周期任务，避免过期提醒误触横幅/声音
+            advanceExpiredReminders();
 
             // 启动时扫描过期提醒，展示横幅并将一次性待办标记完成
             (function() {
