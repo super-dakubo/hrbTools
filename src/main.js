@@ -1295,7 +1295,6 @@ function openHolidayEditor(year) {
         + '<div id="holidayPreview" style="margin-top:12px;"></div>'
         + '<div style="margin-top:12px;display:flex;gap:8px;">'
         + '<button class="btn-small btn-primary" id="holidaySaveBtn" style="display:none;">确认保存</button>'
-        + '<button class="btn-small" id="holidayCancelBtn2">取消</button>'
         + '</div>'
         + '</div>'
         + '</div>';
@@ -1313,10 +1312,6 @@ function openHolidayEditor(year) {
     document.getElementById('holidayCancelBtn').addEventListener('click', function() {
         editor.style.display = 'none';
     });
-    document.getElementById('holidayCancelBtn2').addEventListener('click', function() {
-        editor.style.display = 'none';
-    });
-
     // 保存按钮只绑定一次，点击时从 textarea 读取最新内容
     document.getElementById('holidaySaveBtn').addEventListener('click', async function() {
         var text = document.getElementById('holidayJsonInput').value;
@@ -1997,7 +1992,7 @@ function openTodoEditModal(id) {
         };
     }
 
-var oldEl = document.querySelector('.todo-edit-overlay');
+    var oldEl = document.querySelector('.todo-edit-overlay');
     if (oldEl) oldEl.remove();
 
     var priorityLabels = ['低', '中', '高'];

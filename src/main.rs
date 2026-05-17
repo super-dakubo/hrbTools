@@ -10,6 +10,11 @@ use std::path::PathBuf;
 use tauri::Manager;
 use md5::{Md5, Digest};
 
+#[cfg(target_os = "windows")]
+unsafe extern "system" {
+    fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+}
+
 // ==================== 时区工具 ====================
 
 /// 解析时区名称为固定偏移（含 DST 支持）
@@ -50,24 +55,24 @@ fn resolve_timezone(tz_name: &str) -> Option<chrono::FixedOffset> {
 
 /// 计算某月第 N 个星期日（n 从 1 开始）
 fn nth_sunday_of_month(year: i32, month: u32, n: u32) -> chrono::NaiveDate {
-    let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap();
+    let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).expect("valid date");
     let first_dow = first.weekday().num_days_from_sunday();
     let day = 1 + if first_dow == 0 { 0 } else { 7 - first_dow } + (n - 1) * 7;
-    chrono::NaiveDate::from_ymd_opt(year, month, day).unwrap()
+    chrono::NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
 }
 
 /// 计算某月最后一个星期日
 fn last_sunday_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
-    let last_day = chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).unwrap().pred_opt().unwrap();
+    let last_day = chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).expect("valid date").pred_opt().expect("non-min date");
     let dow = last_day.weekday().num_days_from_sunday();
-    last_day.pred_opt().unwrap().checked_sub_days(chrono::Days::new(dow as u64)).unwrap()
+    last_day.pred_opt().expect("non-min date").checked_sub_days(chrono::Days::new(dow as u64)).expect("valid date")
 }
 
 /// 计算某月的最后一天
 fn last_day_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
-    chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).unwrap().pred_opt().unwrap()
+    chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).expect("valid date").pred_opt().expect("non-min date")
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -342,7 +347,6 @@ struct BackupInfo {
     folder_name: String,
     display_name: String,
     description: String,
-    created_at: String,
     original_file_path: String,
     content_hash: String,
     pinned: bool,
@@ -453,6 +457,21 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
     }
 }
 
+/// 写入错误日志到应用日志目录（Tauri 日志系统低层写入，不依赖前端）
+fn log_error(app: &tauri::AppHandle, msg: &str) {
+    if let Ok(app_dir) = app.path().app_data_dir() {
+        let log_dir = app_dir.join("logs");
+        let _ = fs::create_dir_all(&log_dir);
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let log_path = log_dir.join(format!("{}.log", today));
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+            let _ = writeln!(file, "[{}][error] {}", ts, msg);
+            let _ = file.flush();
+        }
+    }
+}
+
 fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
     let path = config_path(app);
     if let Some(parent) = path.parent() {
@@ -462,11 +481,11 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
         // 原子写入：先写临时文件再 rename，防止崩溃时 config.json 损坏
         let tmp_path = path.with_extension("tmp");
         if let Err(e) = fs::write(&tmp_path, &json) {
-            eprintln!("写入临时配置文件失败: {}", e);
+            log_error(app, &format!("写入临时配置文件失败: {}", e));
             return;
         }
         if let Err(e) = fs::rename(&tmp_path, &path) {
-            eprintln!("重命名配置文件失败: {}", e);
+            log_error(app, &format!("重命名配置文件失败: {}", e));
             let _ = fs::remove_file(&tmp_path);
         }
     }
@@ -713,7 +732,6 @@ fn read_backup_meta(dir: &std::path::Path, folder_name: &str) -> Option<BackupIn
         folder_name: folder_name.to_string(),
         display_name,
         description,
-        created_at: String::new(),
         original_file_path,
         content_hash,
         pinned,
@@ -1597,7 +1615,7 @@ fn advance_daily_reminder(
                 if let (Ok(h), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
                     if let Some(time) = chrono::NaiveTime::from_hms_opt(h, m, 0) {
                         let dt = chrono::NaiveDateTime::new(next_day, time);
-                        return Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis());
+                        return Some(beijing.from_local_datetime(&dt).single().expect("Beijing has no DST").timestamp_millis());
                     }
                 }
             }
@@ -1617,24 +1635,24 @@ fn advance_monthly_reminder(current_fire_at: i64, day_mode: &str) -> Option<i64>
             let next = local_dt.checked_add_months(chrono::Months::new(1))?;
             let last = last_day_of_month(next.year(), next.month());
             let dt = chrono::NaiveDateTime::new(last, local_dt.time());
-            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+            Some(beijing.from_local_datetime(&dt).single().expect("Beijing has no DST").timestamp_millis())
         }
         "second_last" => {
             let next = local_dt.checked_add_months(chrono::Months::new(1))?;
             let last = last_day_of_month(next.year(), next.month());
             let dt = chrono::NaiveDateTime::new(last - chrono::Days::new(1), local_dt.time());
-            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+            Some(beijing.from_local_datetime(&dt).single().expect("Beijing has no DST").timestamp_millis())
         }
         "third_last" => {
             let next = local_dt.checked_add_months(chrono::Months::new(1))?;
             let last = last_day_of_month(next.year(), next.month());
             let dt = chrono::NaiveDateTime::new(last - chrono::Days::new(2), local_dt.time());
-            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+            Some(beijing.from_local_datetime(&dt).single().expect("Beijing has no DST").timestamp_millis())
         }
         _ => { // "fixed"
             let next = local_dt.checked_add_months(chrono::Months::new(1))?;
             let dt = chrono::NaiveDateTime::new(next.date(), local_dt.time());
-            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+            Some(beijing.from_local_datetime(&dt).single().expect("Beijing has no DST").timestamp_millis())
         }
     }
 }
@@ -1679,27 +1697,35 @@ fn main() {
 
             let app_handle = app.handle().clone();
 
-            // 提醒线程调试日志辅助函数：写入应用日志目录
-            let write_log = |handle: &tauri::AppHandle, line: &str| {
-                if let Ok(app_dir) = handle.path().app_data_dir() {
-                    let log_dir = app_dir.join("logs");
-                    let _ = fs::create_dir_all(&log_dir);
-                    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                    let log_path = log_dir.join(format!("{}.log", today));
-                    if let Ok(mut file) = fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&log_path)
-                    {
-                        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
-                        let _ = writeln!(file, "[{}][reminder] {}", ts, line);
-                        let _ = file.flush();
-                    }
-                }
-            };
-
-            write_log(&app_handle, "提醒线程启动");
+            // 提醒线程
             std::thread::spawn(move || {
+                // 持久化日志句柄（避免每5秒开关文件）
+                let mut log_file: Option<(String, std::io::BufWriter<std::fs::File>)> = None;
+                let mut write_log = |line: &str| {
+                    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                    let reopen = log_file.as_ref().map_or(true, |(d, _)| *d != today);
+                    if reopen {
+                        if let Ok(app_dir) = app_handle.path().app_data_dir() {
+                            let log_dir = app_dir.join("logs");
+                            let _ = std::fs::create_dir_all(&log_dir);
+                            let log_path = log_dir.join(format!("{}.log", today));
+                            if let Ok(file) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&log_path)
+                            {
+                                log_file = Some((today, std::io::BufWriter::new(file)));
+                            }
+                        }
+                    }
+                    if let Some((_, ref mut writer)) = log_file {
+                        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+                        let _ = writeln!(writer, "[{}][reminder] {}", ts, line);
+                        let _ = writer.flush();
+                    }
+                };
+
+                write_log("提醒线程启动");
                 let mut last_reminder_log_sec = 0i64;
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(5));
@@ -1719,7 +1745,7 @@ fn main() {
                     if !config.reminder_enabled {
                         let sec = now / 1000;
                         if sec - last_reminder_log_sec >= 60 {
-                            write_log(&app_handle, "reminder_enabled = false，跳过");
+                            write_log("reminder_enabled = false，跳过");
                             last_reminder_log_sec = sec;
                         }
                         continue;
@@ -1746,10 +1772,8 @@ fn main() {
 
                         // 声音
                         if reminder.sound {
-                            let _ = std::process::Command::new("powershell")
-                                .arg("-c")
-                                .arg("[console]::beep(880,200)")
-                                .output();
+                            #[cfg(target_os = "windows")]
+                            unsafe { Beep(880, 200); }
                         }
 
                         // 写入横幅

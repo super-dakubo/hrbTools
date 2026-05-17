@@ -175,3 +175,181 @@ compute_hash: 4.7ms  ← 不调 load_config，快
 ## 依赖管理
 
 ### 引入依赖前评估数据量级
+
+---
+
+## 提醒系统
+
+### `chrono::LocalResult` 不是 `Option`
+
+`chrono::FixedOffset::from_local_datetime()` 返回 `chrono::LocalResult<T>`（三态枚举：`Single`/`Ambiguous`/`None`），**不是** `Option<T>`。它没有 `.unwrap()` 或 `.expect()` 方法。
+
+```rust
+// ❌ 编译错误：LocalResult 没有 unwrap/expect
+beijing.from_local_datetime(&dt).unwrap();
+beijing.from_local_datetime(&dt).expect("msg");
+
+// ✅ 先调 .single() 转为 Option
+beijing.from_local_datetime(&dt).single().expect("Beijing has no DST");
+```
+
+对于固定偏移的时区（如北京 UTC+8），不存在夏令时歧义，`from_local_datetime()` 永远返回 `Single`。但类型系统保障了编译器不会让你直接 unwrap，必须显式处理三种可能性。
+
+### 时区一致性：不要混用系统时区和固定偏移
+
+如果使用固定偏移时区（如 `FixedOffset::east_opt(8 * 3600)`），"今天"的日期也必须用同一个偏移计算：
+
+```rust
+let beijing = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+// ✅ 统一用北京时区
+let today = chrono::Utc::now().with_timezone(&beijing).date_naive();
+// ❌ 混用系统时区（用户可能不在 UTC+8）
+let today = chrono::Local::now().date_naive();
+```
+
+混用会导致跨天边界（23:00-00:00）的行为不一致：系统时区还是"昨天"时，北京已经是"今天"了。
+
+### 跨年边界扫描：holiday 查找必须在循环内
+
+`advance_daily_reminder()` 按天扫描找下一个触发日。如果 `next_holiday` 在循环外一次查好，扫描跨越 12 月 31 日到 1 月 1 日时会用错年份的节假日数据。
+
+```rust
+// ❌ 固定在循环外查一次
+let next_holiday = holiday_data.iter().find(|h| h.year == next_day.year());
+loop {
+    // next_day 可能进入下一年，但 next_holiday 还是旧年的
+}
+
+// ✅ 每次迭代重新查
+loop {
+    let next_holiday = holiday_data.iter().find(|h| h.year == next_day.year());
+}
+```
+
+### 解耦设计：不要用补丁掩盖架构缺陷
+
+2026-05-17 提醒系统重构。原设计在 `TodoItem` 中嵌入 `last_notified` 字段，JS 和 Rust 两方争写同一个 `config.json`，导致三个冷却补丁层层叠加：
+
+| 补丁 | 用途 |
+|------|------|
+| `last_notified` 时间戳 | 60 秒内不重复触发 |
+| `fired_cooldown` HashMap（内存级） | Rust 端 5 分钟二次防护 |
+| 启动扫描去重 | JS 启动时扫描待办防止 Rust 线程重复触达 |
+
+**三个补丁都治标不治本**。根本问题是两个系统（JS 和 Rust）共享同一个待办对象的可变状态。
+
+**正确的做法：拆成生产者-消费者队列。**
+
+```text
+JS (生产者)          Rust 线程 (消费者)          JS (展示)
+  │                       │                       │
+  ├─ 创建 pending_reminder─┤                       │
+  │                       ├─ 消费 → 触发通知       │
+  │                       ├─ 写入 banners ────────┤
+  │                       │                       ├─ 渲染横幅
+  │                       │                       ├─ 用户关闭
+  │                       ├─ 周期推期后重新入队     │
+```
+
+**关键设计原则：数据单向流动。**
+
+- **待办数据**由 JS 管理（创建、修改、删除）
+- **提醒事件**由 Rust 线程消费（到期检查、通知、推期）
+- **横幅展示**由 JS 读持久化数据渲染
+- 两方不共享同一个对象的同一个字段，互不影响
+
+**如何早期发现这类问题：**
+
+1. **补丁堆叠** — 如果在现有逻辑上加第三个防重复方案，说明架构有问题
+2. **共享可变状态跨系统边界** — JS 和 Rust 两方写入同一个文件/对象的同一个字段，必然出现竞争
+3. **冷却/延迟方案超过 1 层** — 一个冷却不够再加一个，是在掩盖而不是解决问题
+4. **"问题仅在某种条件下复现"** — 竞争条件不会稳定复现，这是共享可变状态的典型症状
+
+---
+
+## Rust 2024 Edition
+
+### `extern` block 必须标注 `unsafe`
+
+Rust 2024 edition 要求 `extern "system" { fn Beep(...); }` 必须加 `unsafe` 关键字：
+
+```rust
+// Rust 2024
+unsafe extern "system" {
+    fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+}
+```
+
+旧版（2021 及之前）允许不加，新版强制要求。
+
+### `#[cfg]` 防护：FFI 声明和调用点都要加
+
+如果 FFI 声明有平台条件编译，**所有调用点也必须加同一条件**：
+
+```rust
+// 声明
+#[cfg(target_os = "windows")]
+unsafe extern "system" {
+    fn Beep(dwFreq: u32, dwDuration: u32) -> i32;
+}
+
+// 调用 — 也必须 #[cfg] 保护
+if reminder.sound {
+    #[cfg(target_os = "windows")]
+    unsafe { Beep(880, 200); }
+}
+```
+
+漏掉调用点的 `#[cfg]` 在目标平台上能编译，但跨平台时（或启用更多 target）会报 `Beep` 未定义。
+
+---
+
+## 前端 CSS
+
+### 语义颜色用 CSS 变量
+
+日志级别、优先级徽标、错误状态等有语义含义的颜色，应该定义为 CSS 变量：
+
+```css
+:root {
+  --log-error: #ff4444;
+  --log-warn: #ffaa00;
+  --log-perf: #44aaff;
+}
+```
+
+好处：主题切换（亮色/暗色）只需要修变量的值，不需要逐条改选择器。同时保证了整个应用的视觉一致性。
+
+### `!important` 通常是多余的
+
+同一元素上两个相同优先级的规则，后出现的自然覆盖前面的，不需要 `!important`：
+
+```css
+.win-ctrl:hover { background: rgba(255,255,255,0.08); }
+/* .win-close 也匹配 .win-ctrl，但 .win-close:hover 后面出现，自然覆盖 */
+.win-close:hover { background: #e81123; } /* 不需要 !important */
+```
+
+---
+
+## 模式
+
+### 长驻线程的日志句柄持久化
+
+在长时间运行的线程（如提醒线程每 5 秒扫一次）中写入日志时，保持 `BufWriter<File>` 打开，只在日期变更时重新打开：
+
+```rust
+let mut log_file: Option<(String, BufWriter<File>)> = None;
+let mut write_log = |line: &str| {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    if log_file.as_ref().map_or(true, |(d, _)| *d != today) {
+        // 重新打开（日期变了）
+        ...
+    }
+    if let Some((_, ref mut writer)) = log_file {
+        let _ = writeln!(writer, "{}", line);
+    }
+};
+```
+
+避免每次写入都创建/销毁文件句柄，减少系统调用。但仅适用于写入频率较高的场景（>1次/分钟），否则可以忽略。

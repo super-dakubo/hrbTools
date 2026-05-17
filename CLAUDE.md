@@ -19,13 +19,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >
 > **设置面板中配有的 Rust 关键词 hook（`settings.local.json`）** — 涉及 Rust 编译错误/领域问题时自动注入诊断框架，详见 config-observations.md
 >
-> **设计文档位于 `docs/superpowers/specs/`（16 份）和 `docs/superpowers/plans/`（9 份）** — 处理已有功能时先查对应 spec
+> **设计文档位于 `docs/superpowers/specs/`（18 份）和 `docs/superpowers/plans/`（10 份）** — 处理已有功能时先查对应 spec
 >
 > **自动记忆系统**位于 `C:\Users\PC_WIN10\.claude\projects\d--code-hello-world\memory\` — 跨会话持久化用户偏好和经验教训。
 >
 > **全局 superpowers skill**（`.claude/plugins/`）也均可用：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging` 等，按需使用 Skill 工具调用。
 >
-> **权限配置** — 本项目权限采用分层设计：全局 `Bash(cargo *)` 覆盖所有 cargo 子命令（build/test/tauri dev/tauri build/check），项目级 `.claude/settings.local.json` 放 `git push`、`taskkill` 及常用工具通配（`node *`、`cat *`、`sed *`、`cp *`、`mv *`）。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。复合命令（`&&` 串联）按完整字符串匹配，建议分步执行。
+> **权限配置** — 本项目权限采用分层设计：全局 `Bash(cargo *)` 覆盖所有 cargo 子命令（build/test/tauri dev/tauri build/check），项目级 `.claude/settings.local.json` 放 `git push`、`taskkill` 及常用工具通配（`node *`、`cat *`、`sed *`、`cp *`、`mv *`）。图标生成需 `Bash(python *)`（stdlib 无额外依赖）。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。复合命令（`&&` 串联）按完整字符串匹配，建议分步执行。
 >
 > **`cargo tauri dev` 无 hot-reload** — 修改前端文件（index.html / main.js / styles.css）后需重启或按 Ctrl+R 刷新 WebView。Rust 端修改会自动重新编译。
 > **启动加载遮罩** — 应用启动时有 loading spinner 遮罩，`loadConfig()` 完成后自动淡出。这是有意保留的 UX 设计（Release 模式 `reg.exe` 冷启动 ~3.3s），不要移除。
@@ -52,10 +52,12 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| [src/index.html](src/index.html) | 200 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置，设置已从弹窗改为第 5 面板） |
-| [src/styles.css](src/styles.css) | 1945 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
+| [src/index.html](src/index.html) | 208 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置） |
+| [src/styles.css](src/styles.css) | 1980 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
 | [src/main.js](src/main.js) | 2805 | 全部前端逻辑，`// ===` 分隔 23 区块 + 事件委托 |
 | [src/main.rs](src/main.rs) | 1921 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
+| [icons/](icons/) | — | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
+| [tools/gen_icon.py](tools/gen_icon.py) | 132 | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
 
 ### AppConfig 持久化
 
@@ -78,11 +80,11 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 | 区块 | 分隔标记 | 核心函数 |
 |------|---------|----------|
-| 状态 / DOM 引用 / Tab 栏 | `=== 状态 ===` ~ `=== Tab 拖拽 ===` | 全局变量、DOM 缓存、`renderTabBar`、`switchTab`、拖拽排序 |
+| Tab 栏 / Tab 图标 | `=== 状态 ===` ~ `=== Tab 拖拽 ===` | `renderTabBar`（内联 SVG，必须含 `width="24" height="24"`，用 `currentColor` 跟随主题色）、`switchTab`、拖拽排序 |
 | 时间转换面板 | `=== 时间转换 ===` | `renderTimezoneSets`, `saveTimezoneValues` |
 | 存档管理 | `=== 配置管理 ===` ~ `=== 哈希 ===` | `renderGameTabs`, `renderSlotTabs`, `renderFileTags` |
 | 备份操作 + 列表 | `=== 备份操作 ===` / `=== 备份列表 ===` | `saveBackup`, `refreshBackupList`, 恢复弹窗 |
-| 设置面板（第 5 面板） | `=== 设置面板切换 ===` | `toggleSettings`/`renderSettingsTabBar`/`applyTheme`/`updateSettingsDisplay` + 齿轮/Tab 栏退出交互。设置已从模态弹窗改为独立第 5 面板，通过 `_isSettingsActive` 标志管理切换，退出时回到之前的面板 |
+| 设置面板（第 5 面板） | `=== 设置面板切换 ===` | `toggleSettings`/`renderSettingsTabBar`/`applyTheme`/`updateSettingsDisplay` + 齿轮/Tab 栏退出交互。设置采用卡片分组（`.settings-group`），通用设置和节假日配置分两张卡片展示 |
 | 按钮防重复 + 消息提示 | `=== 按钮防重复 ===` / `=== 消息提示 ===` | `setButtonLoading`, `showSuccess`/`showError` |
 | 工具函数 | `=== 工具函数 ===` | `escapeHtml`, 时间格式化等 |
 | 节假日管理 | `=== 节假日管理 ===` | `renderHolidayYears`, `openHolidayEditor`, `parseAndPreviewHolidayJSON` |
