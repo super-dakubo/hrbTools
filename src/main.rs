@@ -1617,6 +1617,7 @@ fn main() {
                     let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
                     let today_day_type = get_day_type(&today, holiday_year);
 
+                    let mut one_time_fired = false;
                     for todo in config.todos.iter_mut() {
                         if todo.done {
                             write_log(&app_handle, &format!("跳过已完成的待办: '{}'", todo.text));
@@ -1793,18 +1794,11 @@ fn main() {
                                     day_mode: reminder.day_mode.clone(),
                                 });
                             } else {
-                                // 一次性提醒：保留 reminder 数据，由前端标记完成
+                                // 一次性提醒：直接标记完成并持久化
+                                todo.done = true;
+                                todo.last_notified = Some(now);
+                                one_time_fired = true;
                             }
-                            // 构建 JSON payload 发给前端处理持久化
-                            let payload = serde_json::json!({
-                                "id": todo.id,
-                                "text": format!("⏰ {}", todo.text),
-                                "oneTime": todo.repeat.is_none(),
-                                "nextReminderDatetime": todo.reminder.as_ref().map(|r| r.datetime.clone()),
-                                "nextDueDate": todo.due_date.clone(),
-                            });
-                            let payload_str = serde_json::to_string(&payload).unwrap_or_default();
-                            let safe_payload = payload_str.replace('\\', "\\\\").replace('\'', "\\'");
                             write_log(&app_handle, "窗口处理");
                             if let Some(w) = app_handle.get_webview_window("main") {
                                 let is_visible = w.is_visible().unwrap_or(false);
@@ -1819,9 +1813,11 @@ fn main() {
                                     let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
                                 }
                                 write_log(&app_handle, "窗口已置顶并闪烁任务栏");
+                                let safe_text = todo.text.replace('\'', "\\'");
                                 let _ = w.eval(&format!(
-                                    r#"try{{window.__onReminderFired(JSON.parse('{}'))}}catch(e){{}}"#,
-                                    safe_payload
+                                    r#"try{{window.__onOneTimeReminderDone('{}','{}')}}catch(e){{}}"#,
+                                    todo.id.replace('\'', "\\'"),
+                                    safe_text
                                 ));
                                 write_log(&app_handle, "eval 完成");
                             } else {
@@ -1833,6 +1829,9 @@ fn main() {
                         }
                     }
 
+                    if one_time_fired {
+                        save_config(&app_handle, &config);
+                    }
                 }
             });
             Ok(())
