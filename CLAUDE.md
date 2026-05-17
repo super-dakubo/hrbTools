@@ -17,9 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - `tauri-command-pattern` — 添加新 Tauri 命令
 > - `id-based-entities` — 添加可改名实体时用 ID 关联
 >
-> **设置弹窗中配有的 Rust 关键词 hook（`settings.local.json`）** — 涉及 Rust 编译错误/领域问题时自动注入诊断框架，详见 config-observations.md
+> **设置面板中配有的 Rust 关键词 hook（`settings.local.json`）** — 涉及 Rust 编译错误/领域问题时自动注入诊断框架，详见 config-observations.md
 >
-> **设计文档位于 `docs/superpowers/specs/`（19 份）和 `docs/superpowers/plans/`（15 份）** — 处理已有功能时先查对应 spec
+> **设计文档位于 `docs/superpowers/specs/`（16 份）和 `docs/superpowers/plans/`（9 份）** — 处理已有功能时先查对应 spec
 >
 > **自动记忆系统**位于 `C:\Users\PC_WIN10\.claude\projects\d--code-hello-world\memory\` — 跨会话持久化用户偏好和经验教训。
 >
@@ -50,10 +50,10 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| [src/index.html](src/index.html) | 204 | HTML 骨架 + 内联启动 IPC 脚本，4 面板 DOM + 设置弹窗 |
-| [src/styles.css](src/styles.css) | 1857 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式 |
-| [src/main.js](src/main.js) | 2772 | 全部前端逻辑，`// ===` 分隔 24 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | 1807 | 全部 Rust 逻辑，13 个功能分区，27 个 Tauri 命令 |
+| [src/index.html](src/index.html) | 200 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置，设置已从弹窗改为第 5 面板） |
+| [src/styles.css](src/styles.css) | 1945 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式 |
+| [src/main.js](src/main.js) | 2796 | 全部前端逻辑，`// ===` 分隔 23 区块 + 事件委托 |
+| [src/main.rs](src/main.rs) | 1879 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
 
 ### AppConfig 持久化
 
@@ -76,7 +76,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 | 时间转换面板 | `=== 时间转换 ===` | `renderTimezoneSets`, `saveTimezoneValues` |
 | 存档管理 | `=== 配置管理 ===` ~ `=== 哈希 ===` | `renderGameTabs`, `renderSlotTabs`, `renderFileTags` |
 | 备份操作 + 列表 | `=== 备份操作 ===` / `=== 备份列表 ===` | `saveBackup`, `refreshBackupList`, 恢复弹窗 |
-| 设置弹窗 | `=== 设置弹窗 ===` | 主题/开机自启/托盘/提醒开关 |
+| 设置面板（第 5 面板） | `=== 设置面板切换 ===` | `toggleSettings`/`renderSettingsTabBar`/`applyTheme`/`updateSettingsDisplay` + 齿轮/Tab 栏退出交互。设置已从模态弹窗改为独立第 5 面板，通过 `_isSettingsActive` 标志管理切换，退出时回到之前的面板 |
 | 按钮防重复 + 消息提示 | `=== 按钮防重复 ===` / `=== 消息提示 ===` | `setButtonLoading`, `showSuccess`/`showError` |
 | 工具函数 | `=== 工具函数 ===` | `escapeHtml`, 时间格式化等 |
 | 节假日管理 | `=== 节假日管理 ===` | `renderHolidayYears`, `openHolidayEditor`, `parseAndPreviewHolidayJSON` |
@@ -98,25 +98,23 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 ### 节假日系统
 
-节假日数据（`config.holiday_data`）在设置弹窗中通过 JSON 编辑，包含假期段（`start`/`end` 为 MMDD 格式，支持跨年如 `1228-0102`）和补班日（`makeup_days`）。JS 端 `getDayType()` 与 Rust 端 `get_day_type()` **各自实现一份完全独立的判定逻辑**（含补班优先、假期段判定、周末判定），修改时必须同时更新两端保持同步。
+节假日数据（`config.holiday_data`）在设置面板中通过 JSON 编辑，包含假期段（`start`/`end` 为 MMDD 格式，支持跨年如 `1228-0102`）和补班日（`makeup_days`）。JS 端 `getDayType()` 与 Rust 端 `get_day_type()` **各自实现一份完全独立的判定逻辑**（含补班优先、假期段判定、周末判定），修改时必须同时更新两端保持同步。
 
 ### 提醒系统
 
-**Rust 提醒线程** — `setup()` 中 `std::thread::spawn` 每秒轮询 `config.json`，匹配待办的 `reminder` 时间字段，到期时通过 `window.eval()` 调前端 `__onReminderFired(text)`。
+**Rust 提醒线程** — `setup()` 中 `std::thread::spawn` 每 5 秒轮询 `config.json`，匹配待办的 `reminder` 时间字段，到期时通过 `notify-rust` 发送原生系统通知（不再调前端 `__onReminderFired`）。
 
 **提醒类型：**
 - **一次性** — `todo.repeat.is_none()`，到期触发一次。Rust 端 `now - reminder_ts > 5000` 跳过已过期的一次性提醒，**不删除** `todo.reminder`（保留数据供启动扫描使用）
-- **周期性** — `todo.repeat` 为 `"daily"`/`"weekly"`/`"monthly"`，触发后调 `calculateNextReminder()` 计算下次时间并更新配置
+- **周期性** — `todo.repeat` 为 `"daily"`/`"weekly"`/`"monthly"`，触发后在 Rust 循环内推期（按 day_type 扫描下一天、加 7 天、或加 1 月 + day_mode），同步更新 `todo.reminder.datetime`
 - **日类型（daily only）** — 每日提醒区分工作日/休息日。Rust 线程取当天 `day_type`（通过 `get_day_type` 判断节假日+补班+周末），选 `reminder.workday_time` 或 `restday_time` 作为触发时间。推进下一天时同样按 `day_type` 取对应时间，跳过无时间的日
 - **月尾模式** — `reminder.day_mode = "last_day"` 配合月度周期，自动取当月最后一天
 
-**前端横幅** — `__onReminderFired` 将文本推入 `__bannerQueue`（去重），渲染横幅（最多 2 条，超出显示"还有 N 条提醒"），刷新待办列表状态。启动时扫描所有未过期的 `todo.reminder` 批量入队。
-
 **提醒编辑：** 待办编辑弹窗中每日提醒支持设工作日/休息日两个时间，可选择"休息日不提醒"。修改通过 300ms debounce 的 `autoSave()` 自动持久化。
 
-**节假日数据：** 设置弹窗中管理，粘贴 JSON 格式节假日配置（假期段 + 补班日），配置保存在 `config.holiday_data`。[JS `getDayType`](src/main.js) 与 [Rust `get_day_type`](src/main.rs:280) 各自实现一份判定逻辑，需保持同步。
+**节假日数据：** 设置面板中管理，通过独立动态 modal 编辑 JSON（假期段 + 补班日），配置保存在 `config.holiday_data`。[JS `getDayType`](src/main.js) 与 [Rust `get_day_type`](src/main.rs:280) 各自实现一份判定逻辑，需保持同步。
 
-横幅位置在标题栏下方、内容区上方，不遮盖操作按钮，需用户手动点击关闭。
+横幅位置在标题栏下方、内容区上方，不遮盖操作按钮，需用户手动点击关闭。横幅关闭仅移除 UI 元素，不触发后端写（Rust 线程已持久化 done/last_notified）。
 
 ### 待办编辑弹窗
 
@@ -130,7 +128,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 - `tauri::command` 参数名必须用 **camelCase**，结构体字段必须用 **snake_case**（Tauri 宏 vs serde 差异）
 - 写操作必须返回 `OpResult { success: bool, message: string }`
 - 新增命令必须在 `main()` 的 `.invoke_handler(tauri::generate_handler![...])` 中注册
-- `setup()` 中初始化：**系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每秒轮询 config.json，检查待办提醒时间并发送通知）
+- `setup()` 中初始化：**系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每 5 秒轮询 config.json，检查待办提醒时间并发送通知）
 
 ### 约束
 
@@ -161,13 +159,13 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 暗色值必须写在 `:root`，亮色覆盖必须写在 `body.light`。主题切换必须用 `applyTheme()` 函数。**禁止硬编码色值**。
 
-常用变量速查：`--bg`（背景）、`--text`（主文字）、`--text-secondary`（次要文字）、`--accent`（强调色，暗 `#4b8bf4` / 亮 `#0d9488` 青绿）、`--border`（边框）、`--surface`（卡片底）、`--input-bg`（输入框）。需 `rgba()` 时用 `rgba(var(--accent-rgb), x)`。
+常用变量速查：`--bg`（背景）、`--text`（主文字）、`--text-secondary`（次要文字）、`--accent`（强调色，暗 `#4b8bf4` / 亮 `#3b82f6`）、`--border`（边框）、`--surface`（卡片底）、`--input-bg`（输入框）。需 `rgba()` 时用 `rgba(var(--accent-rgb), x)`。
 
-**玻璃拟态（当前 `style/glass-aesthetic` 分支）：** `--glass-bg`（玻璃底）、`--glass-border`（玻璃边框）、`--radius-glass`（玻璃圆角 14px）。暗色 `backdrop-filter: blur(16px)`，亮色 `backdrop-filter: blur(12px)` + 径向渐变背景衬托通透感。
+**玻璃拟态：** `--glass-bg`（玻璃底）、`--glass-border`（玻璃边框）、`--radius-glass`（玻璃圆角 14px）。暗色 `backdrop-filter: blur(16px)`，亮色 `backdrop-filter: blur(12px)` + 径向渐变背景衬托通透感。
 
 ### 依赖
 
-`tauri = "2"`（tray-icon feature）、`serde`、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`
+`tauri = "2"`（tray-icon feature）、`serde`、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`、`log = "0.4"`（std feature）
 
 **Rust edition** `= "2024"`（Cargo.toml），注意此版本的新语法和语义变化。
 

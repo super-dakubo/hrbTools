@@ -9,7 +9,7 @@
 ### 主题色
 
 — **暗色模式**：深蓝底色（`#212539`）+ 蓝色强调（`#4b8bf4`）
-— **亮色模式**：**白色底色 + 青绿色强调**（`#0d9488`），清新干净、不刺眼
+— **亮色模式**：**浅灰底色 + 蓝色强调**（`#3b82f6`），与暗色保持同色相
 
 ### 三种模式
 
@@ -68,9 +68,9 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 | 变量 | 用途 |
 |------|------|
-| `--accent` | 主按钮、选中态（暗 `#4b8bf4` / **亮 `#0d9488` 青绿**） |
-| `--accent-hover` | 按钮 hover（暗 `#5c9af7` / **亮 `#0f766e` 深青绿**） |
-| `--accent-rgb` | accent 的 RGB 分量，用于 `rgba(var(--accent-rgb), ...)` （暗 `75,139,244` / 亮 `13,148,136`） |
+| `--accent` | 主按钮、选中态（暗 `#4b8bf4` / 亮 `#3b82f6`） |
+| `--accent-hover` | 按钮 hover（暗 `#5c9af7` / 亮 `#2563eb`） |
+| `--accent-rgb` | accent 的 RGB 分量，用于 `rgba(var(--accent-rgb), ...)` （暗 `75,139,244` / 亮 `59,130,246`） |
 | `--danger-bg/text/border` | 危险操作（删除等） |
 | `--success-bg/text` | 成功提示 |
 | `--error-bg/text` | 错误提示 |
@@ -100,7 +100,7 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 ### 规则
 
-- 全局字体：`system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`
+- 全局字体：`'DM Sans', 'Segoe UI', system-ui, sans-serif`
 - 新增文字元素使用上述变量，不硬编码 `font-size`
 - 标题用 `font-weight: 600`，正文 `400`-`500`
 
@@ -191,7 +191,7 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 ## 8. 窗口标准
 
-- 尺寸：780×640（tauri.conf.json），启动位置居中偏上
+- 尺寸：960×720（tauri.conf.json），启动位置居中
 - 不可缩放：`resizable: false`
 - 无边框：`decorations: false`
 - 自定义标题栏：`.title-bar`，拖拽区域 `-webkit-app-region: drag`

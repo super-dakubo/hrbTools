@@ -274,7 +274,7 @@ resetButton(saveBackupBtn, '保存存档');
 
 | 配置 | 值 |
 |------|-----|
-| 窗口尺寸 | 780×640，固定不可缩放 |
+| 窗口尺寸 | 960×720，固定不可缩放 |
 | 边框 | 无（`decorations: false`），自定义标题栏 |
 | 前端文件 | 指向 `./src`（无 `devUrl`） |
 | 启动位置 | `setup()` 自动居中偏上（`window.outer_size()`） |

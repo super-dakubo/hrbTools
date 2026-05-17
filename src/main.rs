@@ -1617,7 +1617,8 @@ fn main() {
                     let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
                     let today_day_type = get_day_type(&today, holiday_year);
 
-                    let mut one_time_fired = false;
+                    let mut reminder_fired = false;
+
                     for todo in config.todos.iter_mut() {
                         if todo.done {
                             write_log(&app_handle, &format!("跳过已完成的待办: '{}'", todo.text));
@@ -1697,7 +1698,8 @@ fn main() {
                                 .summary("HRB Tools")
                                 .body(&todo.text)
                                 .show();
-                            // 窗口处理移至推期之后，通过 JSON payload 发送
+                            // 捕获声音标记（reminder 在此之后仍被使用，但 sound:bool 是 Copy 类型）
+                            let play_sound = reminder.sound;
                             // 重复任务自动推期
                             if let Some(repeat) = &todo.repeat {
                                 let mut next_dt = reminder_dt;
@@ -1793,30 +1795,34 @@ fn main() {
                                     sound: reminder.sound,
                                     day_mode: reminder.day_mode.clone(),
                                 });
+                                todo.last_notified = Some(now);
+                                reminder_fired = true;
                             } else {
-                                // 一次性提醒：直接标记完成并持久化
+                                // 一次性提醒：标记完成
                                 todo.done = true;
                                 todo.last_notified = Some(now);
-                                one_time_fired = true;
+                                reminder_fired = true;
+                            }
+                            if play_sound {
+                                let _ = std::process::Command::new("powershell")
+                                    .arg("-c")
+                                    .arg("[console]::beep(880,200)")
+                                    .output();
                             }
                             write_log(&app_handle, "窗口处理");
                             if let Some(w) = app_handle.get_webview_window("main") {
-                                let is_visible = w.is_visible().unwrap_or(false);
-                                let is_focused = w.is_focused().unwrap_or(false);
-
-                                if !is_visible {
-                                    let _ = w.show();
-                                    let _ = w.unminimize();
-                                }
-                                if !is_focused {
-                                    let _ = w.set_focus();
-                                    let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
-                                }
-                                write_log(&app_handle, "窗口已置顶并闪烁任务栏");
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                // set_always_on_top + set_focus：对隐藏恢复和后台可见两种状态均有效
+                                write_log(&app_handle, "置顶开始");
+                                let _ = w.set_always_on_top(true);
+                                let _ = w.set_focus();
+                                let _ = w.set_always_on_top(false);
+                                write_log(&app_handle, "窗口已置顶");
                                 let safe_id = todo.id.replace('\\', "\\\\").replace('\'', "\\'");
                                 let safe_text = todo.text.replace('\\', "\\\\").replace('\'', "\\'");
                                 let _ = w.eval(&format!(
-                                    r#"try{{window.__onOneTimeReminderDone('{}','{}')}}catch(e){{}}"#,
+                                    r#"try{{window.__onReminderFired('{}','{}')}}catch(e){{}}"#,
                                     safe_id,
                                     safe_text
                                 ));
@@ -1830,7 +1836,7 @@ fn main() {
                         }
                     }
 
-                    if one_time_fired {
+                    if reminder_fired {
                         save_config(&app_handle, &config);
                     }
                 }

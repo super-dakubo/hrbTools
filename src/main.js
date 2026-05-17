@@ -6,6 +6,8 @@ let selectedGameId = '';
 let selectedSlotId = '';
 let filePathsBySlot = {};      // { "gameId:slotId": ["D:/saves/save.dat", "D:/saves/config.ini"] }
 let currentHashesBySlot = {};  // { "gameId:slotId": { "save.dat": "abc", "config.ini": "def" } }
+let _isSettingsActive = false;
+let _previousTab = 'convert';
 
 // ==================== DOM 引用 ====================
 
@@ -32,8 +34,6 @@ const backupListTitle = document.getElementById('backupListTitle');
 
 // 设置
 const settingsBtn = document.getElementById('settingsBtn');
-const settingsOverlay = document.getElementById('settingsOverlay');
-const settingsCloseBtn = document.getElementById('settingsCloseBtn');
 const settingsBackupRoot = document.getElementById('settingsBackupRoot');
 const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
@@ -187,6 +187,13 @@ function switchTab(tabId) {
         return;
     }
     _switchLock = true;
+
+    // 如果当前在设置模式且切换到常规面板，先退出设置
+    if (_isSettingsActive && tabId !== 'settings') {
+        _isSettingsActive = false;
+        settingsBtn.classList.remove('active');
+        renderTabBar();
+    }
 
     currentTab = tabId;
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
@@ -1090,20 +1097,51 @@ async function handleTogglePin(btn, folderName) {
     }
 }
 
-// ==================== 设置弹窗 ====================
+// ==================== 设置面板切换 ====================
+
+let _lastSettingsClick = 0;
 
 settingsBtn.addEventListener('click', () => {
+    var now = Date.now();
+    if (now - _lastSettingsClick < TAB_DEBOUNCE_MS) return;
+    _lastSettingsClick = now;
     updateSettingsDisplay();
-    settingsOverlay.style.display = 'flex';
+    toggleSettings();
 });
 
-settingsCloseBtn.addEventListener('click', () => {
-    settingsOverlay.style.display = 'none';
-});
+function renderSettingsTabBar() {
+    var tabBar = document.getElementById('tabBar');
+    tabBar.innerHTML = '<div class="tab-settings-indicator" title="点击退出设置">'
+        + '<div class="si-sep"></div>'
+        + '<div class="si-icon" id="settingsTabExit">&#x2190;</div>'
+        + '<div class="si-sep"></div>'
+        + '</div>';
+    var exitBtn = document.getElementById('settingsTabExit');
+    if (exitBtn) {
+        exitBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (_isSettingsActive) toggleSettings();
+        });
+    }
+}
 
-settingsOverlay.addEventListener('click', (e) => {
-    if (e.target === settingsOverlay) settingsOverlay.style.display = 'none';
-});
+function toggleSettings() {
+    if (_isSettingsActive) {
+        _isSettingsActive = false;
+        settingsBtn.classList.remove('active');
+        switchTab(_previousTab);
+        renderTabBar();
+    } else {
+        _previousTab = currentTab;
+        _isSettingsActive = true;
+        settingsBtn.classList.add('active');
+        document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+        var panel = document.getElementById('panel-settings');
+        if (panel) panel.classList.add('active');
+        renderSettingsTabBar();
+        window.__log.info('Settings', '进入设置面板');
+    }
+}
 
 const THEME_LABELS = { system: '🌓 跟随系统', dark: '🌙 暗色模式', light: '☀️ 亮色模式' };
 const THEME_ORDER = ['system', 'dark', 'light'];
@@ -1884,6 +1922,11 @@ function openTodoEditModal(id) {
     var isNew = id === null;
     var todo = isNew ? null : currentConfig.todos.find(function(t) { return t.id === id; });
     if (!todo && !isNew) return;
+    // 已完成的一次性提醒待办不再允许编辑（编辑弹窗 autoSave 可能覆盖后端 done=true）
+    if (!isNew && todo.done && !todo.repeat && todo.reminder) {
+        window.__log.info('已完成的一次性提醒待办不可编辑: ' + todo.text);
+        return;
+    }
 
     if (isNew) {
         todo = {
@@ -2053,8 +2096,8 @@ function openTodoEditModal(id) {
             var idx = currentConfig.todos.indexOf(todo);
             if (idx !== -1) currentConfig.todos.splice(idx, 1);
             saveConfigToBackend();
-            renderTodos();
         }
+        renderTodos(); // 统一刷新（编辑中跳过，关闭时保证列表最新）
         overlay.remove();
     }
     overlay.querySelector('#editCloseBtn').addEventListener('click', closeModal);
@@ -2146,7 +2189,8 @@ function openTodoEditModal(id) {
                 todo.reminder = null;
             }
             saveConfigToBackend();
-            renderTodos();
+            // 编辑弹窗中不渲染列表（关闭时才渲染），避免 DOM 操作卡顿
+            if (!overlay.parentNode) renderTodos();
         }, 300);
     }
     // 各字段修改触发自动保存
@@ -2237,22 +2281,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                     var btn = document.createElement('button');
                     btn.className = 'banner-item-close';
                     btn.innerHTML = '&times;';
-                    btn.addEventListener('click', async function() {
+                    btn.addEventListener('click', function() {
                         var idx = window.__bannerQueue.indexOf(item);
                         if (idx !== -1) window.__bannerQueue.splice(idx, 1);
                         window.__renderBanners();
-                        // 标记对应待办为已通知，防止重启后重现
-                        if (item.todoId) {
-                            var todo = (currentConfig.todos || []).find(function(t) { return t.id === item.todoId; });
-                            if (todo && todo.reminder) {
-                                todo.last_notified = Date.now();
-                                try {
-                                    await saveConfigToBackend();
-                                } catch (e) {
-                                    window.__log.error('横幅关闭持久化失败: ' + e);
-                                }
-                            }
-                        }
+                        // 不保存配置：Rust 线程已持久化 done/last_notified
                     });
                     row.appendChild(btn);
                     area.appendChild(row);
@@ -2268,13 +2301,21 @@ document.addEventListener('DOMContentLoaded', async function() {
                     area.appendChild(more);
                 }
             };
-            window.__onOneTimeReminderDone = function(id, text) {
+            window.__onReminderFired = function(id, text) {
                 window.__bannerQueue.push({ text: '⏰ ' + text, id: ++window.__bannerIdSeq, todoId: id });
                 window.__renderBanners();
-                invoke('get_config').then(function(fresh) {
-                    currentConfig.todos = fresh.todos;
+                // 本地更新待办状态，不重新拉取（Rust 端 save_config 在 for 循环后才执行，磁盘数据尚未更新）
+                var todo = (currentConfig.todos || []).find(function(t) { return t.id === id; });
+                if (todo) {
+                    // 仅一次性待办标记完成，周期性待办保留原状态
+                    if (!todo.repeat) {
+                        todo.done = true;
+                    }
+                    todo.last_notified = Date.now();
+                }
+                if (currentTab === 'todo') {
                     renderTodos();
-                }).catch(function() {});
+                }
             };
 
             // 启动时扫描过期提醒，展示横幅并将一次性待办标记完成
