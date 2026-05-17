@@ -1578,6 +1578,67 @@ fn read_today_logs(app_handle: tauri::AppHandle) -> Result<Vec<String>, String> 
     Ok(lines)
 }
 
+/// 计算每日提醒的下一次触发时间戳（从明天开始扫描）
+fn advance_daily_reminder(
+    workday_time: &Option<String>,
+    restday_time: &Option<String>,
+    holiday_data: &[HolidayYearConfig],
+) -> Option<i64> {
+    let beijing = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let today = chrono::Utc::now().with_timezone(&beijing).date_naive();
+    let mut next_day = today + chrono::Days::new(1);
+    let mut max_days = 366i32;
+    loop {
+        let next_holiday = holiday_data.iter().find(|h| h.year == next_day.year());
+        let day_type = get_day_type(&next_day, next_holiday);
+        let time_str = if day_type == "workday" { workday_time } else { restday_time };
+        if let Some(t) = time_str {
+            if let Some((h_str, m_str)) = t.split_once(':') {
+                if let (Ok(h), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
+                    if let Some(time) = chrono::NaiveTime::from_hms_opt(h, m, 0) {
+                        let dt = chrono::NaiveDateTime::new(next_day, time);
+                        return Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis());
+                    }
+                }
+            }
+        }
+        next_day = next_day + chrono::Days::new(1);
+        max_days -= 1;
+        if max_days <= 0 { return None; }
+    }
+}
+
+fn advance_monthly_reminder(current_fire_at: i64, day_mode: &str) -> Option<i64> {
+    let beijing = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let utc_dt = chrono::DateTime::from_timestamp_millis(current_fire_at)?;
+    let local_dt = utc_dt.naive_utc();
+    match day_mode {
+        "last" => {
+            let next = local_dt.checked_add_months(chrono::Months::new(1))?;
+            let last = last_day_of_month(next.year(), next.month());
+            let dt = chrono::NaiveDateTime::new(last, local_dt.time());
+            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+        }
+        "second_last" => {
+            let next = local_dt.checked_add_months(chrono::Months::new(1))?;
+            let last = last_day_of_month(next.year(), next.month());
+            let dt = chrono::NaiveDateTime::new(last - chrono::Days::new(1), local_dt.time());
+            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+        }
+        "third_last" => {
+            let next = local_dt.checked_add_months(chrono::Months::new(1))?;
+            let last = last_day_of_month(next.year(), next.month());
+            let dt = chrono::NaiveDateTime::new(last - chrono::Days::new(2), local_dt.time());
+            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+        }
+        _ => { // "fixed"
+            let next = local_dt.checked_add_months(chrono::Months::new(1))?;
+            let dt = chrono::NaiveDateTime::new(next.date(), local_dt.time());
+            Some(beijing.from_local_datetime(&dt).unwrap().timestamp_millis())
+        }
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -1644,31 +1705,15 @@ fn main() {
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     let config_path = match app_handle.path().app_data_dir() {
                         Ok(p) => p.join("config.json"),
-                        Err(_) => {
-                            write_log(&app_handle, "获取 config_path 失败");
-                            continue;
-                        }
+                        Err(_) => continue,
                     };
                     let json = match std::fs::read_to_string(&config_path) {
                         Ok(s) => s,
-                        Err(_) => {
-                            write_log(&app_handle, &format!("读取 config.json 失败: {:?}", config_path));
-                            continue;
-                        }
+                        Err(_) => continue,
                     };
-                    let raw: serde_json::Value = match serde_json::from_str(&json) {
-                        Ok(v) => v,
-                        Err(_) => {
-                            write_log(&app_handle, "解析 JSON 失败");
-                            continue;
-                        }
-                    };
-                    let mut config: AppConfig = match serde_json::from_value(raw) {
+                    let mut config: AppConfig = match serde_json::from_str(&json) {
                         Ok(c) => c,
-                        Err(_) => {
-                            write_log(&app_handle, "反序列化 AppConfig 失败");
-                            continue;
-                        }
+                        Err(_) => continue,
                     };
                     let now = chrono::Utc::now().timestamp_millis();
                     if !config.reminder_enabled {
@@ -1679,220 +1724,100 @@ fn main() {
                         }
                         continue;
                     }
-                    // 当日 day_type 固定，所有待办共用（避免循环内重复计算）
-                    let today = chrono::Local::now().date_naive();
-                    let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
-                    let today_day_type = get_day_type(&today, holiday_year);
 
                     let mut reminder_fired = false;
+                    let mut to_remove: Vec<String> = Vec::new();
+                    let mut to_add: Vec<PendingReminder> = Vec::new();
+                    let mut to_done: Vec<String> = Vec::new();
 
-                    for todo in config.todos.iter_mut() {
-                        if todo.done {
-                            write_log(&app_handle, &format!("跳过已完成的待办: '{}'", todo.text));
+                    for reminder in &config.pending_reminders {
+                        if reminder.fire_at > now { continue; }
+                        // 跳过过于陈旧的（>5min），防止长时间关机后开机批量触发
+                        if now - reminder.fire_at > 300_000 {
+                            to_remove.push(reminder.id.clone());
                             continue;
                         }
-                        if todo.paused {
-                            write_log(&app_handle, &format!("跳过已暂停的待办: '{}'", todo.text));
-                            continue;
+
+                        // 触发通知
+                        let _ = notify_rust::Notification::new()
+                            .summary("HRB Tools")
+                            .body(&reminder.text)
+                            .show();
+
+                        // 声音
+                        if reminder.sound {
+                            let _ = std::process::Command::new("powershell")
+                                .arg("-c")
+                                .arg("[console]::beep(880,200)")
+                                .output();
                         }
-                        let reminder = match &todo.reminder {
-                            Some(r) => r,
-                            None => {
-                                write_log(&app_handle, &format!("待办 '{}' 无提醒设置", todo.text));
-                                continue;
-                            }
-                        };
 
-                        let (reminder_dt, is_one_time) = if todo.repeat.is_none() && reminder.datetime.contains('T') {
-                            // 一次性提醒：直接使用 datetime 字段
-                            match chrono::NaiveDateTime::parse_from_str(&reminder.datetime, "%Y-%m-%dT%H:%M") {
-                                Ok(dt) => (dt, true),
-                                Err(e) => {
-                                    write_log(&app_handle, &format!("解析一次性提醒时间失败 '{}' : {:?}", reminder.datetime, e));
-                                    continue;
-                                }
-                            }
-                        } else {
-                            // 重复提醒：用 workday_time/restday_time 拼接今日
-                            let day_type = today_day_type;
-                            let target_time = if day_type == "workday" {
-                                reminder.workday_time.as_deref()
-                            } else {
-                                reminder.restday_time.as_deref()
+                        // 写入横幅
+                        config.banners.push(BannerEntry {
+                            id: reminder.id.clone(),
+                            todo_id: reminder.todo_id.clone(),
+                            text: format!("⏰ {}", reminder.text),
+                            created_at: now,
+                        });
+
+                        // 周期任务推期
+                        if let Some(ref repeat) = reminder.repeat {
+                            let next_fire = match repeat.as_str() {
+                                "daily" => advance_daily_reminder(
+                                    &reminder.workday_time, &reminder.restday_time, &config.holiday_data),
+                                "weekly" => Some(reminder.fire_at + 7 * 24 * 60 * 60 * 1000),
+                                "monthly" => advance_monthly_reminder(reminder.fire_at, &reminder.day_mode),
+                                _ => None,
                             };
-                            let target_time = match target_time {
-                                Some(t) => t,
-                                None => {
-                                    write_log(&app_handle, &format!("待办 '{}' 今日({})无对应提醒时间", todo.text, day_type));
-                                    continue;
-                                }
-                            };
-                            let dt_str = format!("{}T{}", today.format("%Y-%m-%d"), target_time);
-                            match chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%dT%H:%M") {
-                                Ok(dt) => (dt, false),
-                                Err(e) => {
-                                    write_log(&app_handle, &format!("解析提醒时间失败 '{}' : {:?}", dt_str, e));
-                                    continue;
-                                }
-                            }
-                        };
-
-                        let beijing_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
-                        let reminder_ts = beijing_offset.from_local_datetime(&reminder_dt).unwrap().timestamp_millis();
-                        write_log(&app_handle, &format!("检查: '{}' one_time={} target={}", todo.text, is_one_time, reminder_dt.format("%Y-%m-%dT%H:%M")));
-
-                        if reminder_ts <= now {
-                            // 一次性提醒过时 >5 秒则不触发，保留提醒数据供 UI 显示
-                            if is_one_time && now - reminder_ts > 5000 {
-                                write_log(&app_handle, "一次性提醒已过时超过5秒，跳过触发以保留提醒数据");
-                                continue;
-                            }
-                            write_log(&app_handle, &format!("*** 触发提醒: '{}' ***", todo.text));
-                            write_log(&app_handle, "notify_rust.show() 调用");
-                            let _ = notify_rust::Notification::new()
-                                .summary("HRB Tools")
-                                .body(&todo.text)
-                                .show();
-                            // 捕获声音标记（reminder 在此之后仍被使用，但 sound:bool 是 Copy 类型）
-                            let play_sound = reminder.sound;
-                            // 重复任务自动推期
-                            if let Some(repeat) = &todo.repeat {
-                                let mut next_dt = reminder_dt;
-                                let adv_due = |d: &mut Option<String>| {
-                                    if let &mut Some(ref due) = d {
-                                        if let Ok(due_d) = chrono::NaiveDate::parse_from_str(due, "%Y-%m-%d") {
-                                            let new_due = match repeat.as_str() {
-                                                "daily" => {
-                                                    let mut next = due_d + chrono::Days::new(1);
-                                                    let next_holiday = config.holiday_data.iter().find(|h| h.year == next.year());
-                                                    let mut max_days = 366i32;
-                                                    loop {
-                                                        let nt = get_day_type(&next, next_holiday);
-                                                        let nt_time = if nt == "workday" { &reminder.workday_time } else { &reminder.restday_time };
-                                                        if nt_time.is_some() {
-                                                            break;
-                                                        }
-                                                        next = next + chrono::Days::new(1);
-                                                        max_days -= 1;
-                                                        if max_days <= 0 {
-                                                            write_log(&app_handle, &format!("待办 '{}' 截止日期推进 366 天无匹配", todo.text));
-                                                            break;
-                                                        }
-                                                    }
-                                                    next
-                                                }
-                                                "weekly" => due_d + chrono::Days::new(7),
-                                                "monthly" => due_d + chrono::Months::new(1),
-                                                _ => due_d,
-                                            };
-                                            *d = Some(new_due.format("%Y-%m-%d").to_string());
-                                        }
-                                    }
-                                };
-                                match repeat.as_str() {
-                                    "daily" => {
-                                        // 推进到有对应提醒时间的下一天
-                                        let mut next_day = next_dt.date() + chrono::Days::new(1);
-                                        let next_holiday = config.holiday_data.iter().find(|h| h.year == next_day.year());
-                                        let mut max_days = 366i32;
-                                        loop {
-                                            let next_type = get_day_type(&next_day, next_holiday);
-                                            let next_time = if next_type == "workday" { &reminder.workday_time } else { &reminder.restday_time };
-                                            if let Some(t) = next_time {
-                                                if let Some((h_str, m_str)) = t.split_once(':') {
-                                                    if let (Ok(h), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
-                                                        if let Some(time) = chrono::NaiveTime::from_hms_opt(h, m, 0) {
-                                                            next_dt = chrono::NaiveDateTime::new(next_day, time);
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            next_day = next_day + chrono::Days::new(1);
-                                            max_days -= 1;
-                                            if max_days <= 0 {
-                                                write_log(&app_handle, &format!("待办 '{}' 在 366 天内无匹配提醒日，跳过", todo.text));
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    "weekly" => next_dt += chrono::Duration::days(7),
-                                    "monthly" => {
-                                        let day_mode = reminder.day_mode.as_str();
-                                        match day_mode {
-                                            "last" => {
-                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
-                                                let last = last_day_of_month(next.year(), next.month());
-                                                next_dt = chrono::NaiveDateTime::new(last, next_dt.time());
-                                            }
-                                            "second_last" => {
-                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
-                                                let last = last_day_of_month(next.year(), next.month());
-                                                next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(1), next_dt.time());
-                                            }
-                                            "third_last" => {
-                                                let next = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
-                                                let last = last_day_of_month(next.year(), next.month());
-                                                next_dt = chrono::NaiveDateTime::new(last - chrono::Days::new(2), next_dt.time());
-                                            }
-                                            _ => { // "fixed" 或空字符串 = 向后兼容
-                                                next_dt = next_dt.checked_add_months(chrono::Months::new(1)).unwrap_or(next_dt);
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                adv_due(&mut todo.due_date);
-                                todo.reminder = Some(ReminderConfig {
-                                    datetime: next_dt.format("%Y-%m-%dT%H:%M").to_string(),
+                            if let Some(next_ms) = next_fire {
+                                to_add.push(PendingReminder {
+                                    id: format!("{}_{}", reminder.todo_id, next_ms),
+                                    todo_id: reminder.todo_id.clone(),
+                                    text: reminder.text.clone(),
+                                    fire_at: next_ms,
+                                    sound: reminder.sound,
+                                    repeat: reminder.repeat.clone(),
                                     workday_time: reminder.workday_time.clone(),
                                     restday_time: reminder.restday_time.clone(),
-                                    sound: reminder.sound,
                                     day_mode: reminder.day_mode.clone(),
                                 });
-                                reminder_fired = true;
-                            } else {
-                                // 一次性提醒：标记完成
-                                todo.done = true;
-                                todo.completed_at = Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
-                                reminder_fired = true;
-                            }
-                            if play_sound {
-                                let _ = std::process::Command::new("powershell")
-                                    .arg("-c")
-                                    .arg("[console]::beep(880,200)")
-                                    .output();
-                            }
-                            write_log(&app_handle, "窗口处理");
-                            if let Some(w) = app_handle.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                // set_always_on_top + set_focus：对隐藏恢复和后台可见两种状态均有效
-                                write_log(&app_handle, "置顶开始");
-                                let _ = w.set_always_on_top(true);
-                                let _ = w.set_focus();
-                                let _ = w.set_always_on_top(false);
-                                write_log(&app_handle, "窗口已置顶");
-                                let safe_id = todo.id.replace('\\', "\\\\").replace('\'', "\\'")
-                                    .replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t");
-                                let safe_text = todo.text.replace('\\', "\\\\").replace('\'', "\\'")
-                                    .replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t");
-                                let _ = w.eval(&format!(
-                                    r#"try{{window.__onReminderFired('{}','{}')}}catch(e){{}}"#,
-                                    safe_id,
-                                    safe_text
-                                ));
-                                write_log(&app_handle, "eval 完成");
-                            } else {
-                                write_log(&app_handle, "获取窗口失败！");
                             }
                         } else {
-                            write_log(&app_handle, "提醒时间未到");
+                            // 一次性：标记待办完成
+                            to_done.push(reminder.todo_id.clone());
+                        }
+
+                        to_remove.push(reminder.id.clone());
+                        reminder_fired = true;
+
+                        // 显示窗口
+                        if let Some(w) = app_handle.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_always_on_top(true);
+                            let _ = w.set_focus();
+                            let _ = w.set_always_on_top(false);
+                        }
+                    }
+
+                    // 批量应用变更
+                    config.pending_reminders.retain(|r| !to_remove.contains(&r.id));
+                    config.pending_reminders.extend(to_add);
+
+                    for todo_id in to_done {
+                        if let Some(todo) = config.todos.iter_mut().find(|t| t.id == todo_id) {
+                            todo.done = true;
+                            todo.completed_at = Some(
+                                chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+                            );
                         }
                     }
 
                     if reminder_fired {
                         save_config(&app_handle, &config);
+                        if let Some(w) = app_handle.get_webview_window("main") {
+                            let _ = w.eval("try{window.__onReminderFired()}catch(e){}");
+                        }
                     }
                 }
             });
