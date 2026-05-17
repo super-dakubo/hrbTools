@@ -110,19 +110,36 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 ### 提醒系统
 
-**Rust 提醒线程** — `setup()` 中 `std::thread::spawn` 每 5 秒轮询 `config.json`，匹配待办的 `reminder` 时间字段，到期时通过 `notify-rust` 发送原生系统通知（不再调前端 `__onReminderFired`）。
+**提醒系统 — 生产者/消费者架构（2026-05-17 解耦重构）：**
+
+```text
+JS: syncPendingReminders() → 写入 pending_reminders
+
+Rust 线程: 每 5s 轮询 config.json → 消费到期的 pending_reminder
+    → notify-rust 通知 + Beep(880,200) 声音
+    → 写入 banners 到 config
+    → 周期推期后重新入队 / 一次性标记 todo.done
+    → save_config() → eval("__onReminderFired()")
+
+JS __onReminderFired: 重新拉取 config → renderBanners()
+```
 
 **提醒类型：**
-- **一次性** — `todo.repeat.is_none()`，到期触发一次。Rust 端 `now - reminder_ts > 5000` 跳过已过期的一次性提醒，**不删除** `todo.reminder`（保留数据供启动扫描使用）
-- **周期性** — `todo.repeat` 为 `"daily"`/`"weekly"`/`"monthly"`，触发后在 Rust 循环内推期（按 day_type 扫描下一天、加 7 天、或加 1 月 + day_mode），同步更新 `todo.reminder.datetime`
-- **日类型（daily only）** — 每日提醒区分工作日/休息日。Rust 线程取当天 `day_type`（通过 `get_day_type` 判断节假日+补班+周末），选 `reminder.workday_time` 或 `restday_time` 作为触发时间。推进下一天时同样按 `day_type` 取对应时间，跳过无时间的日
-- **月尾模式** — `reminder.day_mode = "last_day"` 配合月度周期，自动取当月最后一天
 
-**提醒编辑：** 待办编辑弹窗中每日提醒支持设工作日/休息日两个时间，可选择"休息日不提醒"。修改通过 300ms debounce 的 `autoSave()` 自动持久化。
+- **一次性** — `repeat = null`，消费后标记待办完成
+- **周期性** — `"daily"`/`"weekly"`/`"monthly"`，消费后在 Rust 循环内推期，推期后作为新 `PendingReminder` 入队
+- **日类型（daily only）** — 区分工作日/休息日。Rust 线程按 `get_day_type` 取当日类型，选 `workday_time` 或 `restday_time`。推进时按 day_type 取对应时间，跳过无时间的日
+- **月尾模式** — `day_mode = "last"`/`"second_last"`/`"third_last"` 配合月度周期
 
-**节假日数据：** 设置面板中管理，通过独立动态 modal 编辑 JSON（假期段 + 补班日），配置保存在 `config.holiday_data`。[JS `getDayType`](src/main.js) 与 [Rust `get_day_type`](src/main.rs:280) 各自实现一份判定逻辑，需保持同步。
+**关键设计原则：待办数据和通知状态彻底解耦。**
+- JS 管理待办 CRUD + 生产 `pending_reminders`
+- Rust 线程消费 `pending_reminders` + 生产 `banners`
+- JS 读 `config.banners` 渲染横幅，关闭横幅仅移除 UI 元素
+- 两方不共享同一个对象的同一个字段，无竞争条件
+- `syncPendingReminders()` 有则不建：检查每个待办是否已有对应 `pending_reminder`，存在则跳过
+- 5 分钟陈旧跳过：`now - fire_at > 300_000` 的 `pending_reminder` 直接丢弃，防止关机后开机批量触发
 
-横幅位置在标题栏下方、内容区上方，不遮盖操作按钮，需用户手动点击关闭。横幅关闭仅移除 UI 元素，不触发后端写（Rust 线程已持久化 done/last_notified）。
+**待办编辑弹窗：** 每日提醒支持设工作日/休息日两个时间，可选择"休息日不提醒"。修改通过 300ms debounce 的 `autoSave()` 自动持久化，`autoSave()` 中调 `syncPendingReminders()` 同步。
 
 ### 待办编辑弹窗
 
@@ -139,6 +156,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 - 新增命令必须在 `main()` 的 `.invoke_handler(tauri::generate_handler![...])` 中注册
 - `setup()` 中初始化：**系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每 5 秒轮询 config.json，检查待办提醒时间并发送通知）
 - **`sanitize_path_component()`** — 所有从 `game_id`/`slot_id`/`folder_name` 等用户参数构建文件系统路径的命令，必须先调用此函数检查路径穿越
+- **Win32 FFI** — `unsafe extern "system" { fn Beep(...) }` 受 `#[cfg(target_os = "windows")]` 保护，调用点也需同样防护
 
 ### 约束
 
@@ -175,7 +193,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 ### 依赖
 
-`tauri = "2"`（tray-icon feature）、`serde`、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`、`log = "0.4"`（std feature）
+`tauri = "2"`（tray-icon feature）、`serde`（derive）、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`
 
 **Rust edition** `= "2024"`（Cargo.toml），注意此版本的新语法和语义变化。
 
