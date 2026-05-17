@@ -9,26 +9,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - 「引入依赖前评估数据量级」— chrono-tz 2-3MB 的教训
 > **README 截图见 [screenshots/](./screenshots/) 目录** — 截图和演示 GIF 放这里。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
-> **处理特定功能时阅读 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节** — 数据结构、命令列表、持久化、DST、备份、窗口等详细参考。
+> **处理特定功能时先查 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节** — 数据结构、命令列表、持久化、DST、备份、窗口等详细参考。
 >
-> **项目 skill 位于 `.claude/skills/`** — 通过 `/skill-name` 或 Skill 工具调用。当前可用：
+> **项目 skill 位于 `.claude/skills/`** — 通过 `/skill-name` 或 Skill 工具调用：
 > - `panel-isolation` — 修改 main.js 时遵守面板隔离
 > - `backup-operations` — 备份系统操作规范
 > - `tauri-command-pattern` — 添加新 Tauri 命令
 > - `id-based-entities` — 添加可改名实体时用 ID 关联
 >
-> **设置面板中配有的 Rust 关键词 hook（`settings.local.json`）** — 涉及 Rust 编译错误/领域问题时自动注入诊断框架，详见 config-observations.md
+> **Rust 关键词 hook（`settings.local.json`）** — 涉及 Rust 编译错误/领域问题时自动注入诊断框架，详见 config-observations.md
 >
-> **设计文档位于 `docs/superpowers/specs/`（18 份）和 `docs/superpowers/plans/`（10 份）** — 处理已有功能时先查对应 spec
+> **所有设计文档已整合为 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** — 处理功能时查对应章节
 >
 > **自动记忆系统**位于 `C:\Users\PC_WIN10\.claude\projects\d--code-hello-world\memory\` — 跨会话持久化用户偏好和经验教训。
 >
-> **全局 superpowers skill**（`.claude/plugins/`）也均可用：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging` 等，按需使用 Skill 工具调用。
+> **全局 superpowers skill**（`.claude/plugins/`）：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`systematic-debugging` 等，按需用 Skill 工具调用。
 >
-> **权限配置** — 本项目权限采用分层设计：全局 `Bash(cargo *)` 覆盖所有 cargo 子命令（build/test/tauri dev/tauri build/check），项目级 `.claude/settings.local.json` 放 `git push`、`taskkill` 及常用工具通配（`node *`、`cat *`、`sed *`、`cp *`、`mv *`）。图标生成需 `Bash(python *)`（stdlib 无额外依赖）。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。复合命令（`&&` 串联）按完整字符串匹配，建议分步执行。
+> **权限分层** — 全局 `Bash(cargo *)` 覆盖所有 cargo 子命令，项目级 `.claude/settings.local.json` 放 `git push`、`taskkill` 及常用通配（`node *`、`cat *`、`sed *`、`cp *`、`mv *`）。图标生成用 `Bash(python *)`（stdlib 无额外依赖）。不在此放 npm 或不相关命令。新增常用命令时优先考虑全局配置。复合命令（`&&` 串联）按完整字符串匹配，分步执行更安全。
 >
-> **`cargo tauri dev` 无 hot-reload** — 修改前端文件（index.html / main.js / styles.css）后需重启或按 Ctrl+R 刷新 WebView。Rust 端修改会自动重新编译。
-> **启动加载遮罩** — 应用启动时有 loading spinner 遮罩，`loadConfig()` 完成后自动淡出。这是有意保留的 UX 设计（Release 模式 `reg.exe` 冷启动 ~3.3s），不要移除。
+> **`cargo tauri dev` 无 hot-reload** — 改前端文件（index.html / main.js / styles.css）后重启或按 Ctrl+R 刷新 WebView。Rust 端修改自动重新编译。
+> **启动加载遮罩** — loading spinner 遮罩，`loadConfig()` 完成后自动淡出。这是 Release 模式 `reg.exe` 冷启动 ~3.3s 的有意设计，不要移除。
 
 ## 常用命令
 
@@ -70,9 +70,7 @@ GameConfig { id: UUID, name, slots: Vec<SlotConfig>, pinned }
 SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_file_patterns: Vec<String> }
 ```
 
-### set_auto_start 条件执行（重要）
-
-`set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。这是性能关键——`reg.exe` 子进程在 GUI 应用中约 3.3 秒开销。任何时候修改 `set_config` 保存路径，都不要无条件调 `set_auto_start`。
+**`set_auto_start` 条件执行：** `set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。`reg.exe` 子进程在 GUI 应用中约 3.3 秒，不要在任何读路径或保存路径中无条件调用。
 
 ### 前端（src/main.js）分区
 
@@ -95,51 +93,42 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 **事件委托模式：** 所有子元素事件绑定必须放在 `setupEventDelegation()` 中，用 `e.target.closest('[data-action]')` 匹配。禁止在渲染函数中绑定事件或加单独的 `addEventListener`。这是整个前端的事件架构核心，覆盖游戏标签、存档位、文件标签、备份列表、待办列表的全部交互。
 
-### 日志系统
+**日志流水线：** `window.__log`（环形缓冲区 2000 条）→ IPC `log_write` → `%APPDATA%/com.hrbTools.app/logs/YYYY-MM-DD.log`（10MB 自动轮转）
 
-前端环形缓冲区（`window.__log`，2000 条上限）→ Tauri IPC `log_write` → `%APPDATA%/com.hrbTools.app/logs/YYYY-MM-DD.log`（10MB 自动轮转）。
-
-- 写入策略：全部级别写入文件，每 10 秒或满 100 条自动 flush（INFO 及以上输出到控制台）
-- 启动时自动加载今日日志文件到缓冲区（`window.__log.loadFromFile()`）
-- 日志面板：第 4 个 Tab，支持搜索、级别筛选、打开日志目录、清屏、导出（`export()`）
-- 所有 Tab 切换通过双重 rAF 记录 PERF 日志（dom/action/render 分段耗时）
+- 写全部级别到文件，每 10 秒或满 100 条自动 flush；INFO 及以上输出控制台
+- 启动时自动加载今日日志文件到缓冲区（`loadFromFile()`）
+- 日志面板（第 4 Tab）：搜索、级别筛选、打开日志目录、清屏、导出
+- 所有 Tab 切换用双重 rAF 记录 PERF 日志（dom/action/render 分段耗时）
 
 ### 节假日系统
 
 节假日数据（`config.holiday_data`）在设置面板中通过 JSON 编辑，包含假期段（`start`/`end` 为 MMDD 格式，支持跨年如 `1228-0102`）和补班日（`makeup_days`）。JS 端 `getDayType()` 与 Rust 端 `get_day_type()` **各自实现一份完全独立的判定逻辑**（含补班优先、假期段判定、周末判定），修改时必须同时更新两端保持同步。
 
-### 提醒系统
-
-**提醒系统 — 生产者/消费者架构（2026-05-17 解耦重构）：**
+**提醒架构 — 生产者/消费者解耦：**
 
 ```text
-JS: syncPendingReminders() → 写入 pending_reminders
-
-Rust 线程: 每 5s 轮询 config.json → 消费到期的 pending_reminder
-    → notify-rust 通知 + Beep(880,200) 声音
-    → 写入 banners 到 config
-    → 周期推期后重新入队 / 一次性标记 todo.done
-    → save_config() → eval("__onReminderFired()")
-
-JS __onReminderFired: 重新拉取 config → renderBanners()
+JS syncPendingReminders() → pending_reminders
+→ Rust 线程每 5s 消费到期项
+    → notify-rust + Beep → banners → save_config()
+    → eval("__onReminderFired()")
+→ JS get_config() → renderBanners()
 ```
 
-**提醒类型：**
+**设计约束（改提醒逻辑时必须遵守）：**
 
-- **一次性** — `repeat = null`，消费后标记待办完成
-- **周期性** — `"daily"`/`"weekly"`/`"monthly"`，消费后在 Rust 循环内推期，推期后作为新 `PendingReminder` 入队
-- **日类型（daily only）** — 区分工作日/休息日。Rust 线程按 `get_day_type` 取当日类型，选 `workday_time` 或 `restday_time`。推进时按 day_type 取对应时间，跳过无时间的日
-- **月尾模式** — `day_mode = "last"`/`"second_last"`/`"third_last"` 配合月度周期
+- JS 生产 `pending_reminders`，Rust 消费。两方不共享同一个对象的同一个字段
+- `syncPendingReminders()` 检查每个待办是否已有对应 `pending_reminder`，存在则跳过
+- 5 分钟陈旧跳过：`now - fire_at > 300_000` 的直接丢弃，防关机后批量触发
+- Rust 线程消费后 `save_config()` 持久化，JS 只读刷新（`get_config`），不写
+- 每日提醒支持设工作日/休息日两个时间，可选"休息日不提醒"
 
-**关键设计原则：待办数据和通知状态彻底解耦。**
-- JS 管理待办 CRUD + 生产 `pending_reminders`
-- Rust 线程消费 `pending_reminders` + 生产 `banners`
-- JS 读 `config.banners` 渲染横幅，关闭横幅仅移除 UI 元素
-- 两方不共享同一个对象的同一个字段，无竞争条件
-- `syncPendingReminders()` 有则不建：检查每个待办是否已有对应 `pending_reminder`，存在则跳过
-- 5 分钟陈旧跳过：`now - fire_at > 300_000` 的 `pending_reminder` 直接丢弃，防止关机后开机批量触发
+**提醒类型推期行为：**
 
-**待办编辑弹窗：** 每日提醒支持设工作日/休息日两个时间，可选择"休息日不提醒"。修改通过 300ms debounce 的 `autoSave()` 自动持久化，`autoSave()` 中调 `syncPendingReminders()` 同步。
+- 一次性（`repeat = null`）：不推期，消费后标记完成
+- 每日（`"daily"`）：按 `get_day_type` 选 `workday_time`/`restday_time`，扫描下一天
+- 每周（`"weekly"`）：+7 天
+- 每月（`"monthly"`）：`checked_add_months` + day_mode clamp
+- 月尾模式：`day_mode = "last"`/`"second_last"`/`"third_last"`
 
 ### 待办编辑弹窗
 
