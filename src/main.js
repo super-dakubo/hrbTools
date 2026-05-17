@@ -259,17 +259,14 @@ function formatDatetimeStr(rustStr, format) {
     const parts = rustStr.split(' ');
     const dateParts = parts[0].split('-');
     const timeParts = parts[1].split(':');
-    const Y = dateParts[0];
-    const M = dateParts[1];
-    const D = dateParts[2];
-    const h = timeParts[0];
-    const m = timeParts[1];
-    const s = timeParts[2];
+    const Y = dateParts[0], M = dateParts[1], D = dateParts[2];
+    const h = timeParts[0], m = timeParts[1], s = timeParts[2];
     if (!format) return `${Y}-${M}-${D} ${h}:${m}:${s}`;
-    if (format === '%Y/%m/%d %H:%M:%S') return `${Y}/${M}/${D} ${h}:${m}:${s}`;
-    if (format === '%Y-%m-%d %H:%M') return `${Y}-${M}-${D} ${h}:${m}`;
-    if (format === '%m-%d %H:%M') return `${M}-${D} ${h}:${m}`;
-    return rustStr;
+    // 用 format 字符串中的 %Y/%m/%d/%H/%M/%S 占位符替换为实际值
+    // 新增格式只需在 DATETIME_FORMATS 中添加，无需改此函数
+    return format
+        .replace('%Y', Y).replace('%m', M).replace('%d', D)
+        .replace('%H', h).replace('%M', m).replace('%S', s);
 }
 
 function renderTimezoneSets() {
@@ -1179,7 +1176,7 @@ trayToggle.addEventListener('click', function() {
 
 // 启用提醒开关
 reminderToggle.addEventListener('click', function() {
-    currentConfig.reminder_enabled = currentConfig.reminder_enabled !== false ? false : true;
+    currentConfig.reminder_enabled = !currentConfig.reminder_enabled;
     updateSettingsDisplay();
     saveConfigToBackend();
 });
@@ -1504,15 +1501,18 @@ async function refreshAll() {
     }
     _refreshLock = true;
     var t0 = performance.now();
-    renderGameTabs();
-    renderSlotTabs();
-    if (selectedGameId && selectedSlotId) {
-        restoreFilePaths();
-        await refreshCurrentHashes();
-        await refreshBackupList();
+    try {
+        renderGameTabs();
+        renderSlotTabs();
+        if (selectedGameId && selectedSlotId) {
+            restoreFilePaths();
+            await refreshCurrentHashes();
+            await refreshBackupList();
+        }
+    } finally {
+        window.__log.perf('Backup', '刷新备份列表', { ms: +(performance.now() - t0).toFixed(2) });
+        _refreshLock = false;
     }
-    window.__log.perf('Backup', '刷新备份列表', { ms: +(performance.now() - t0).toFixed(2) });
-    _refreshLock = false;
 }
 
 // ==================== 待办工具 ====================
@@ -2156,8 +2156,10 @@ function openTodoEditModal(id) {
             reminder: reminderVal ? { datetime: reminderVal, sound: true, day_mode: dayMode } : null,
         };
     }
+    var _saveInProgress = false;
     function autoSave() {
         if (_saveTimer) clearTimeout(_saveTimer);
+        if (_saveInProgress) return; // 前一次保存未完成则跳过本次
         _saveTimer = setTimeout(function() {
             var fields = collectFields();
             if (!fields) return;
@@ -2188,7 +2190,12 @@ function openTodoEditModal(id) {
             } else {
                 todo.reminder = null;
             }
-            saveConfigToBackend();
+            _saveInProgress = true;
+            saveConfigToBackend().then(function() {
+                _saveInProgress = false;
+            }).catch(function() {
+                _saveInProgress = false;
+            });
             // 编辑弹窗中不渲染列表（关闭时才渲染），避免 DOM 操作卡顿
             if (!overlay.parentNode) renderTodos();
         }, 300);
@@ -2310,6 +2317,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     // 仅一次性待办标记完成，周期性待办保留原状态
                     if (!todo.repeat) {
                         todo.done = true;
+                        todo.completed_at = new Date().toISOString();
                     }
                     todo.last_notified = Date.now();
                 }
@@ -2333,6 +2341,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         // 一次性待办启动时自动标记完成
                         if (!t.repeat && t.reminder.datetime && t.reminder.datetime.includes('T')) {
                             t.done = true;
+                            t.completed_at = new Date().toISOString();
                             t.last_notified = Date.now();
                             needSave = true;
                         }

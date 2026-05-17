@@ -186,7 +186,7 @@ fn default_theme() -> String { "system".to_string() }
 fn default_true() -> bool { true }
 
 fn default_tab_order() -> Vec<String> {
-    vec!["convert".to_string(), "backup".to_string(), "todo".to_string()]
+    vec!["convert".to_string(), "backup".to_string(), "todo".to_string(), "log".to_string()]
 }
 
 impl Default for AppConfig {
@@ -554,7 +554,11 @@ fn get_config(app: tauri::AppHandle) -> AppConfig {
 
 #[tauri::command]
 fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
-    set_auto_start(config.auto_start);
+    // 仅 auto_start 变化时才调 reg.exe，避免每次保存都 spawn 进程
+    let old = load_config(&app);
+    if old.auto_start != config.auto_start {
+        set_auto_start(config.auto_start);
+    }
     save_config(&app, &config);
     OpResult {
         success: true,
@@ -579,22 +583,32 @@ fn save_holiday_data(app: tauri::AppHandle, data: Vec<HolidayYearConfig>) -> OpR
 }
 
 #[tauri::command]
-fn pick_file(app: tauri::AppHandle) -> Option<String> {
+fn pick_file(app: tauri::AppHandle, start_dir: Option<String>) -> Option<String> {
     let window = app.get_webview_window("main");
     let mut dialog = rfd::FileDialog::new();
     if let Some(ref w) = window {
         dialog = dialog.set_parent(w);
+    }
+    if let Some(ref dir) = start_dir {
+        if !dir.is_empty() {
+            dialog = dialog.set_directory(dir);
+        }
     }
     dialog.pick_file()
         .map(|p| p.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-fn pick_directory(app: tauri::AppHandle) -> Option<String> {
+fn pick_directory(app: tauri::AppHandle, start_dir: Option<String>) -> Option<String> {
     let window = app.get_webview_window("main");
     let mut dialog = rfd::FileDialog::new();
     if let Some(ref w) = window {
         dialog = dialog.set_parent(w);
+    }
+    if let Some(ref dir) = start_dir {
+        if !dir.is_empty() {
+            dialog = dialog.set_directory(dir);
+        }
     }
     dialog.pick_folder()
         .map(|p| p.to_string_lossy().to_string())
@@ -685,6 +699,8 @@ fn create_backup(
     slot_id: String,
     file_paths: Vec<String>,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&game_id) { return e; }
+    if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     let mut config = load_config(&app);
 
     // 1. 检查备份目录
@@ -835,6 +851,9 @@ fn create_backup(
 
 #[tauri::command]
 fn list_backups(app: tauri::AppHandle, game_id: String, slot_id: String) -> Vec<BackupInfo> {
+    if sanitize_path_component(&game_id).is_err() || sanitize_path_component(&slot_id).is_err() {
+        return vec![];
+    }
     let config = load_config(&app);
     list_backups_internal(&config, &game_id, &slot_id)
 }
@@ -846,6 +865,8 @@ fn delete_backup(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&game_id) { return e; }
+    if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
@@ -871,6 +892,8 @@ fn rename_backup(
     folder_name: String,
     new_description: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&game_id) { return e; }
+    if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     if let Err(e) = sanitize_path_component(&new_description) { return e; }
     let config = load_config(&app);
@@ -937,6 +960,12 @@ fn restore_backup(
     skip_backup: bool,
     selected_files: Option<Vec<String>>,
 ) -> RestoreResult {
+    if let Err(e) = sanitize_path_component(&game_id) {
+        return RestoreResult { success: false, message: e.message, available_files: None, need_backup_confirm: None };
+    }
+    if let Err(e) = sanitize_path_component(&slot_id) {
+        return RestoreResult { success: false, message: e.message, available_files: None, need_backup_confirm: None };
+    }
     if let Err(e) = sanitize_path_component(&folder_name) {
         return RestoreResult { success: false, message: e.message, available_files: None, need_backup_confirm: None };
     }
@@ -1179,6 +1208,8 @@ fn toggle_backup_pin(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&game_id) { return e; }
+    if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
@@ -1273,6 +1304,8 @@ fn recompute_backup_hash(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&game_id) { return e; }
+    if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
@@ -1345,7 +1378,13 @@ fn recompute_backup_hash(
 #[tauri::command]
 fn add_timezone_set(app: tauri::AppHandle) -> OpResult {
     let mut config = load_config(&app);
-    let id = format!("set-{}", config.timezone_sets.len() + 1);
+    // 取已有最大编号 + 1，避免删除后添加导致 ID 冲突
+    let max_id = config.timezone_sets.iter()
+        .filter_map(|s| s.id.strip_prefix("set-"))
+        .filter_map(|n| n.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    let id = format!("set-{}", max_id + 1);
     let sort_order = config.timezone_sets.len() as u32;
     config.timezone_sets.push(TimezoneSet {
         id,
@@ -1800,6 +1839,7 @@ fn main() {
                             } else {
                                 // 一次性提醒：标记完成
                                 todo.done = true;
+                                todo.completed_at = Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
                                 todo.last_notified = Some(now);
                                 reminder_fired = true;
                             }
@@ -1819,8 +1859,10 @@ fn main() {
                                 let _ = w.set_focus();
                                 let _ = w.set_always_on_top(false);
                                 write_log(&app_handle, "窗口已置顶");
-                                let safe_id = todo.id.replace('\\', "\\\\").replace('\'', "\\'");
-                                let safe_text = todo.text.replace('\\', "\\\\").replace('\'', "\\'");
+                                let safe_id = todo.id.replace('\\', "\\\\").replace('\'', "\\'")
+                                    .replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t");
+                                let safe_text = todo.text.replace('\\', "\\\\").replace('\'', "\\'")
+                                    .replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t");
                                 let _ = w.eval(&format!(
                                     r#"try{{window.__onReminderFired('{}','{}')}}catch(e){{}}"#,
                                     safe_id,
