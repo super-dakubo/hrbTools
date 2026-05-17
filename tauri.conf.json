@@ -18,10 +18,12 @@
     "windows": [
       {
         "title": "HRB Tools",
-        "width": 780,
-        "height": 640,
+        "width": 960,
+        "height": 720,
         "resizable": false,
-        "decorations": false
+        "decorations": false,
+        "center": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI --enable-gpu-rasterization --enable-zero-copy --disable-gpu-vsync"
       }
     ]
   }

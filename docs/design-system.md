@@ -23,7 +23,7 @@
 
 - CSS 变量定义在 `:root` 块（暗色默认），亮色覆盖在 `body.light` 块
 - 所有颜色必须通过 CSS 变量引用，**禁止硬编码颜色值**
-- JS `applyTheme(theme)` 负责切换 `body.light` class 和更新按钮文字
+- 主题切换必须用 `applyTheme(theme)`，禁止直接操作 `body.light` class
 - 新增 UI 时，颜色一律用已有变量；如需新颜色令牌，先在此文档注册
 
 ### 系统模式检测
@@ -86,12 +86,12 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 | 变量 | 值 | 用途 |
 |------|-----|------|
-| `--font-xs` | `0.6rem` | 标签辅助文字、badge |
-| `--font-sm` | `0.72rem` | 时间戳输入、存档路径 |
-| `--font-base` | `0.8rem` | 正文、标签名、按钮 |
-| `--font-md` | `0.9rem` | h3 标题、输入框 |
-| `--font-lg` | `1.1rem` | h1 面板标题 |
-| `--font-xl` | `1.3rem` | 转换结果大字 |
+| `--font-xs` | `0.65rem` | 标签辅助文字、badge |
+| `--font-sm` | `0.78rem` | 时间戳输入、存档路径 |
+| `--font-base` | `0.85rem` | 正文、标签名、按钮 |
+| `--font-md` | `0.95rem` | h3 标题、输入框 |
+| `--font-lg` | `1.15rem` | h1 面板标题 |
+| `--font-xl` | `1.4rem` | 转换结果大字 |
 
 ### 基准
 

@@ -4,8 +4,9 @@
 use chrono::{NaiveDateTime, DateTime, Utc, TimeZone};
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
-use std::io::{Write, BufWriter};
+use std::io::{Write, BufReader, BufWriter, Read};
 use std::path::PathBuf;
 use tauri::Manager;
 use md5::{Md5, Digest};
@@ -327,6 +328,33 @@ struct OpResult {
     message: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct FileInfo {
+    name: String,
+    original_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RestoreResult {
+    success: bool,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    available_files: Option<Vec<FileInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    need_backup_confirm: Option<String>,
+}
+
+/// 校验路径组件，防止目录遍历
+fn sanitize_path_component(name: &str) -> Result<String, OpResult> {
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return Err(OpResult {
+            success: false,
+            message: "无效的路径".to_string(),
+        });
+    }
+    Ok(name.to_string())
+}
+
 // ==================== 配置持久化 ====================
 
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
@@ -403,7 +431,16 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
         let _ = fs::create_dir_all(parent);
     }
     if let Ok(json) = serde_json::to_string_pretty(config) {
-        let _ = fs::write(&path, json);
+        // 原子写入：先写临时文件再 rename，防止崩溃时 config.json 损坏
+        let tmp_path = path.with_extension("tmp");
+        if let Err(e) = fs::write(&tmp_path, &json) {
+            eprintln!("写入临时配置文件失败: {}", e);
+            return;
+        }
+        if let Err(e) = fs::rename(&tmp_path, &path) {
+            eprintln!("重命名配置文件失败: {}", e);
+            let _ = fs::remove_file(&tmp_path);
+        }
     }
 }
 
@@ -542,16 +579,24 @@ fn save_holiday_data(app: tauri::AppHandle, data: Vec<HolidayYearConfig>) -> OpR
 }
 
 #[tauri::command]
-fn pick_file() -> Option<String> {
-    rfd::FileDialog::new()
-        .pick_file()
+fn pick_file(app: tauri::AppHandle) -> Option<String> {
+    let window = app.get_webview_window("main");
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(ref w) = window {
+        dialog = dialog.set_parent(w);
+    }
+    dialog.pick_file()
         .map(|p| p.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-fn pick_directory() -> Option<String> {
-    rfd::FileDialog::new()
-        .pick_folder()
+fn pick_directory(app: tauri::AppHandle) -> Option<String> {
+    let window = app.get_webview_window("main");
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(ref w) = window {
+        dialog = dialog.set_parent(w);
+    }
+    dialog.pick_folder()
         .map(|p| p.to_string_lossy().to_string())
 }
 
@@ -801,6 +846,7 @@ fn delete_backup(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -825,6 +871,8 @@ fn rename_backup(
     folder_name: String,
     new_description: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&folder_name) { return e; }
+    if let Err(e) = sanitize_path_component(&new_description) { return e; }
     let config = load_config(&app);
     let game_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -888,7 +936,10 @@ fn restore_backup(
     folder_name: String,
     skip_backup: bool,
     selected_files: Option<Vec<String>>,
-) -> OpResult {
+) -> RestoreResult {
+    if let Err(e) = sanitize_path_component(&folder_name) {
+        return RestoreResult { success: false, message: e.message, available_files: None, need_backup_confirm: None };
+    }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -896,18 +947,20 @@ fn restore_backup(
         .join(&folder_name);
 
     if !backup_dir.exists() {
-        return OpResult { success: false, message: "备份不存在".to_string() };
+        return RestoreResult { success: false, message: "备份不存在".to_string(), available_files: None, need_backup_confirm: None };
     }
 
     // 读取 meta.json，收集文件信息
     let meta_path = backup_dir.join("meta.json");
-    let files_info: Vec<(String, String)> = if meta_path.exists() {
+    let files_info: Vec<FileInfo> = if meta_path.exists() {
         let meta_str = std::fs::read_to_string(&meta_path).unwrap_or_default();
         if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&meta_str) {
             if let Some(files) = meta["files"].as_object() {
                 files.iter().map(|(name, info)| {
-                    let original_path = info["original_path"].as_str().unwrap_or("").to_string();
-                    (name.clone(), original_path)
+                    FileInfo {
+                        name: name.clone(),
+                        original_path: info["original_path"].as_str().unwrap_or("").to_string(),
+                    }
                 }).collect()
             } else if let Some(original_path) = meta["original_file_path"].as_str() {
                 // 旧格式向后兼容
@@ -917,7 +970,7 @@ fn restore_backup(
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "save.dat".to_string());
-                vec![(name, original_path.to_string())]
+                vec![FileInfo { name, original_path: original_path.to_string() }]
             } else {
                 vec![]
             }
@@ -929,35 +982,34 @@ fn restore_backup(
     };
 
     if files_info.is_empty() {
-        return OpResult { success: false, message: "备份中没有文件信息".to_string() };
+        return RestoreResult { success: false, message: "备份中没有文件信息".to_string(), available_files: None, need_backup_confirm: None };
     }
 
     // 多文件且未指定 selected_files 时返回文件列表
     if files_info.len() > 1 && selected_files.is_none() {
-        let file_list: Vec<String> = files_info.iter().map(|(name, path)| {
-            format!("{}|{}", name, path)
-        }).collect();
-        return OpResult {
+        return RestoreResult {
             success: false,
-            message: format!("SELECT_FILES:{}", file_list.join(";;")),
+            message: "请选择要恢复的文件".to_string(),
+            available_files: Some(files_info),
+            need_backup_confirm: None,
         };
     }
 
     // 筛选要恢复的文件
-    let to_restore: Vec<&(String, String)> = if let Some(ref selected) = selected_files {
-        files_info.iter().filter(|(name, _)| selected.contains(name)).collect()
+    let to_restore: Vec<&FileInfo> = if let Some(ref selected) = selected_files {
+        files_info.iter().filter(|f| selected.contains(&f.name)).collect()
     } else {
         files_info.iter().collect()
     };
 
     if to_restore.is_empty() {
-        return OpResult { success: false, message: "未选择要恢复的文件".to_string() };
+        return RestoreResult { success: false, message: "未选择要恢复的文件".to_string(), available_files: None, need_backup_confirm: None };
     }
 
     // 检查原始文件是否需要先备份
     if !skip_backup {
-        let needs_backup = to_restore.iter().any(|(_, orig)| {
-            std::path::Path::new(orig).exists()
+        let needs_backup = to_restore.iter().any(|f| {
+            std::path::Path::new(&f.original_path).exists()
         });
         if needs_backup {
             let patterns: Vec<String> = config.games.iter()
@@ -966,16 +1018,18 @@ fn restore_backup(
                 .map(|s| s.key_file_patterns.clone())
                 .unwrap_or_default();
 
-            let first_original = &to_restore[0].1;
+            let first_original = &to_restore[0].original_path;
             let current_hash = compute_single_hash(first_original.clone(), patterns).unwrap_or_default();
             let hash_match = list_backups_internal(&config, &game_id, &slot_id)
                 .iter()
                 .any(|b| b.content_hash == current_hash);
 
             if !hash_match {
-                return OpResult {
+                return RestoreResult {
                     success: false,
-                    message: format!("NEED_BACKUP_CONFIRM:{}", first_original),
+                    message: "目标文件未备份，请确认".to_string(),
+                    available_files: None,
+                    need_backup_confirm: Some(first_original.clone()),
                 };
             }
         }
@@ -983,29 +1037,33 @@ fn restore_backup(
 
     // 逐个恢复选中文件
     let mut restored = 0;
-    for (name, original_path) in &to_restore {
-        let backup_file = backup_dir.join(name);
+    for file in &to_restore {
+        let backup_file = backup_dir.join(&file.name);
         if !backup_file.exists() {
             continue;
         }
         // 确保目标目录存在
-        if let Some(parent) = std::path::Path::new(original_path).parent() {
+        if let Some(parent) = std::path::Path::new(&file.original_path).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        match std::fs::copy(&backup_file, original_path) {
+        match std::fs::copy(&backup_file, &file.original_path) {
             Ok(_) => restored += 1,
             Err(e) => {
-                return OpResult {
+                return RestoreResult {
                     success: false,
-                    message: format!("恢复 {} 失败: {}", name, e),
+                    message: format!("恢复 {} 失败: {}", file.name, e),
+                    available_files: None,
+                    need_backup_confirm: None,
                 };
             }
         }
     }
 
-    OpResult {
+    RestoreResult {
         success: true,
         message: format!("已恢复 {}/{} 个文件", restored, to_restore.len()),
+        available_files: None,
+        need_backup_confirm: None,
     }
 }
 
@@ -1055,10 +1113,17 @@ fn compute_single_hash(file_path: String, patterns: Vec<String>) -> Result<Strin
 }
 
 fn compute_file_hash(path: &std::path::Path) -> Result<String, String> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("读取文件失败: {}", e))?;
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("打开文件失败: {}", e))?;
+    let mut reader = BufReader::new(file);
     let mut hasher = Md5::new();
-    hasher.update(&bytes);
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf)
+            .map_err(|e| format!("读取文件失败: {}", e))?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -1114,6 +1179,7 @@ fn toggle_backup_pin(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -1207,6 +1273,7 @@ fn recompute_backup_hash(
     slot_id: String,
     folder_name: String,
 ) -> OpResult {
+    if let Err(e) = sanitize_path_component(&folder_name) { return e; }
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -1504,8 +1571,10 @@ fn main() {
 
             write_log(&app_handle, "提醒线程启动");
             std::thread::spawn(move || {
+                let mut last_reminder_log_sec = 0i64;
+                let mut fired_cooldown: HashMap<String, i64> = HashMap::new();
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    std::thread::sleep(std::time::Duration::from_secs(5));
                     let config_path = match app_handle.path().app_data_dir() {
                         Ok(p) => p.join("config.json"),
                         Err(_) => {
@@ -1535,14 +1604,14 @@ fn main() {
                         }
                     };
                     let now = chrono::Utc::now().timestamp_millis();
-                    let mut changed = false;
                     if !config.reminder_enabled {
-                        write_log(&app_handle, "reminder_enabled = false，跳过");
+                        let sec = now / 1000;
+                        if sec - last_reminder_log_sec >= 60 {
+                            write_log(&app_handle, "reminder_enabled = false，跳过");
+                            last_reminder_log_sec = sec;
+                        }
                         continue;
                     }
-
-                    write_log(&app_handle, &format!("线程运行中，待办数={}", config.todos.len()));
-
                     // 当日 day_type 固定，所有待办共用（避免循环内重复计算）
                     let today = chrono::Local::now().date_naive();
                     let holiday_year = config.holiday_data.iter().find(|h| h.year == today.year());
@@ -1565,40 +1634,47 @@ fn main() {
                             }
                         };
 
-                        let day_type = today_day_type;
-
-                        let target_time = if day_type == "workday" {
-                            reminder.workday_time.as_deref()
+                        let (reminder_dt, is_one_time) = if todo.repeat.is_none() && reminder.datetime.contains('T') {
+                            // 一次性提醒：直接使用 datetime 字段
+                            match chrono::NaiveDateTime::parse_from_str(&reminder.datetime, "%Y-%m-%dT%H:%M") {
+                                Ok(dt) => (dt, true),
+                                Err(e) => {
+                                    write_log(&app_handle, &format!("解析一次性提醒时间失败 '{}' : {:?}", reminder.datetime, e));
+                                    continue;
+                                }
+                            }
                         } else {
-                            reminder.restday_time.as_deref()
-                        };
-
-                        let target_time = match target_time {
-                            Some(t) => t,
-                            None => {
-                                write_log(&app_handle, &format!("待办 '{}' 今日({})无对应提醒时间", todo.text, day_type));
-                                continue;
+                            // 重复提醒：用 workday_time/restday_time 拼接今日
+                            let day_type = today_day_type;
+                            let target_time = if day_type == "workday" {
+                                reminder.workday_time.as_deref()
+                            } else {
+                                reminder.restday_time.as_deref()
+                            };
+                            let target_time = match target_time {
+                                Some(t) => t,
+                                None => {
+                                    write_log(&app_handle, &format!("待办 '{}' 今日({})无对应提醒时间", todo.text, day_type));
+                                    continue;
+                                }
+                            };
+                            let dt_str = format!("{}T{}", today.format("%Y-%m-%d"), target_time);
+                            match chrono::NaiveDateTime::parse_from_str(&dt_str, "%Y-%m-%dT%H:%M") {
+                                Ok(dt) => (dt, false),
+                                Err(e) => {
+                                    write_log(&app_handle, &format!("解析提醒时间失败 '{}' : {:?}", dt_str, e));
+                                    continue;
+                                }
                             }
                         };
 
-                        let reminder_dt_str = format!("{}T{}", today.format("%Y-%m-%d"), target_time);
-                        write_log(&app_handle, &format!("检查: '{}' day_type={} target={}", todo.text, day_type, reminder_dt_str));
-
-                        let reminder_dt = match chrono::NaiveDateTime::parse_from_str(
-                            &reminder_dt_str, "%Y-%m-%dT%H:%M"
-                        ) {
-                            Ok(dt) => dt,
-                            Err(e) => {
-                                write_log(&app_handle, &format!("解析提醒时间失败 '{}' : {:?}", reminder_dt_str, e));
-                                continue;
-                            }
-                        };
                         let beijing_offset = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
                         let reminder_ts = beijing_offset.from_local_datetime(&reminder_dt).unwrap().timestamp_millis();
-                        write_log(&app_handle, &format!("提醒时间={}, 差值={}s", reminder_dt.format("%Y-%m-%dT%H:%M"), (reminder_ts - now) / 1000));
+                        write_log(&app_handle, &format!("检查: '{}' one_time={} target={}", todo.text, is_one_time, reminder_dt.format("%Y-%m-%dT%H:%M")));
+
                         if reminder_ts <= now {
                             // 一次性提醒过时 >5 秒则不触发，保留提醒数据供 UI 显示
-                            if todo.repeat.is_none() && now - reminder_ts > 5000 {
+                            if is_one_time && now - reminder_ts > 5000 {
                                 write_log(&app_handle, "一次性提醒已过时超过5秒，跳过触发以保留提醒数据");
                                 continue;
                             }
@@ -1607,33 +1683,20 @@ fn main() {
                                 write_log(&app_handle, &format!("60秒防重复，跳过 '{}'", todo.text));
                                 continue;
                             }
+                            // 内存冷却检查：即使前端 save 失败也防止重复触发
+                            const COOLDOWN_MS: i64 = 300_000;
+                            let last_fired = fired_cooldown.get(&todo.id).copied().unwrap_or(0);
+                            if now - last_fired < COOLDOWN_MS {
+                                write_log(&app_handle, &format!("内存冷却中(5min)，跳过 '{}'", todo.text));
+                                continue;
+                            }
                             write_log(&app_handle, &format!("*** 触发提醒: '{}' ***", todo.text));
                             write_log(&app_handle, "notify_rust.show() 调用");
                             let _ = notify_rust::Notification::new()
                                 .summary("HRB Tools")
                                 .body(&todo.text)
                                 .show();
-                            // 工具窗口置顶（代替弹窗）
-                            write_log(&app_handle, "窗口置顶");
-                            if let Some(w) = app_handle.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.unminimize();
-                                let _ = w.set_focus();
-                            }
-                            write_log(&app_handle, "任务栏闪烁 + eval __onReminderFired");
-                            let safe_msg = format!("⏰ {}", todo.text.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n").replace('\r', "").replace('\t', "\\t"));
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
-                                let _ = window.eval(&format!(
-                                    r#"try{{window.__onReminderFired('{}')}}catch(e){{}}"#,
-                                    safe_msg
-                                ));
-                                write_log(&app_handle, "eval 完成");
-                            } else {
-                                write_log(&app_handle, "获取窗口失败！");
-                            }
-                            todo.last_notified = Some(now);
-                            changed = true;
+                            // 窗口处理移至推期之后，通过 JSON payload 发送
                             // 重复任务自动推期
                             if let Some(repeat) = &todo.repeat {
                                 let mut next_dt = reminder_dt;
@@ -1730,24 +1793,46 @@ fn main() {
                                     day_mode: reminder.day_mode.clone(),
                                 });
                             } else {
-                                // 一次性提醒：保留 reminder 数据（由过时防重和 last_notified 防重，不会重复触）
-                                // 不清除，UI 会展示为"已过期"
+                                // 一次性提醒：保留 reminder 数据，由前端标记完成
                             }
+                            // 构建 JSON payload 发给前端处理持久化
+                            let payload = serde_json::json!({
+                                "id": todo.id,
+                                "text": format!("⏰ {}", todo.text),
+                                "oneTime": todo.repeat.is_none(),
+                                "nextReminderDatetime": todo.reminder.as_ref().map(|r| r.datetime.clone()),
+                                "nextDueDate": todo.due_date.clone(),
+                            });
+                            let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+                            let safe_payload = payload_str.replace('\\', "\\\\").replace('\'', "\\'");
+                            write_log(&app_handle, "窗口处理");
+                            if let Some(w) = app_handle.get_webview_window("main") {
+                                let is_visible = w.is_visible().unwrap_or(false);
+                                let is_focused = w.is_focused().unwrap_or(false);
+
+                                if !is_visible {
+                                    let _ = w.show();
+                                    let _ = w.unminimize();
+                                }
+                                if !is_focused {
+                                    let _ = w.set_focus();
+                                    let _ = w.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                                }
+                                write_log(&app_handle, "窗口已置顶并闪烁任务栏");
+                                let _ = w.eval(&format!(
+                                    r#"try{{window.__onReminderFired(JSON.parse('{}'))}}catch(e){{}}"#,
+                                    safe_payload
+                                ));
+                                write_log(&app_handle, "eval 完成");
+                            } else {
+                                write_log(&app_handle, "获取窗口失败！");
+                            }
+                            fired_cooldown.insert(todo.id.clone(), now);
                         } else {
                             write_log(&app_handle, "提醒时间未到");
                         }
                     }
 
-                    if changed {
-                        if let Ok(json) = serde_json::to_string_pretty(&config) {
-                            let _ = std::fs::write(&config_path, json);
-                            write_log(&app_handle, "配置已更新");
-                        }
-                        // 任务栏闪烁
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
-                        }
-                    }
                 }
             });
             Ok(())

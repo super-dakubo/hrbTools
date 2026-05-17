@@ -33,7 +33,7 @@ Windows 桌面工具箱 — 时间转换、游戏存档备份、待办工具、�
 
 - **前端** — 原生 HTML/CSS/JS（无 npm / 无打包器）
 - **后端** — Rust + Tauri 2.0
-- **窗口** — 780×640 无边框，自定义标题栏
+- **窗口** — 960×720 无边框，自定义标题栏
 
 ### 构建
 
@@ -57,7 +57,7 @@ src/
   index.html      HTML 骨架，4 面板 + 设置弹窗
   styles.css      CSS 变量主题（暗色/亮色）+ 全部样式
   main.js         全部前端逻辑，// === 分隔为 Tab/时间转换/存档/待办/日志 五区块
-  main.rs         全部 Rust 逻辑，27 个 Tauri 命令
+  main.rs         全部 Rust 逻辑，28 个 Tauri 命令
 
 docs/
   ARCHITECTURE.md  数据结构、命令列表、持久化等详细参考

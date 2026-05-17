@@ -58,7 +58,7 @@
 }
 
 body.light {
-    /* 颜色 — 亮色模式 */
+    /* 颜色 — 亮色模式（accent 保持蓝色色相，与暗色一致） */
     --bg: #f0f2f5;
     --bg-alt: #e8eaef;
     --surface: rgba(255,255,255,0.7);
@@ -70,11 +70,11 @@ body.light {
     --text-muted: rgba(0,0,0,0.38);
     --text-dim: rgba(0,0,0,0.2);
     --input-bg: #fff;
-    --titlebar-bg: #fff;
-    --tab-bar-bg: rgba(0,0,0,0.03);
-    --accent: #0d9488;
-    --accent-hover: #0f766e;
-    --accent-rgb: 13, 148, 136;
+    --titlebar-bg: rgba(255,255,255,0.75);
+    --tab-bar-bg: rgba(255,255,255,0.35);
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-rgb: 59, 130, 246;
     --danger-bg: rgba(220,38,38,0.08);
     --danger-text: #dc2626;
     --danger-border: rgba(220,38,38,0.25);
@@ -82,14 +82,23 @@ body.light {
     --success-text: #16a34a;
     --error-bg: rgba(220,38,38,0.08);
     --error-text: #dc2626;
-    --scrollbar-thumb: rgba(0,0,0,0.15);
-    --scrollbar-thumb-hover: rgba(0,0,0,0.25);
-    --shadow: rgba(0,0,0,0.08);
+    --scrollbar-thumb: rgba(0,0,0,0.12);
+    --scrollbar-thumb-hover: rgba(0,0,0,0.2);
+    --shadow: rgba(0,0,0,0.1);
 
-    /* 玻璃拟态 */
-    --glass-bg: rgba(255,255,255,0.6);
-    --glass-border: rgba(0,0,0,0.06);
+    /* 玻璃拟态 — 更透让渐变透出 */
+    --glass-bg: rgba(255,255,255,0.35);
+    --glass-border: rgba(0,0,0,0.08);
     --radius-glass: 14px;
+
+    /* 背景渐变 — 让玻璃 blur 有内容可透 */
+    background: linear-gradient(135deg, #e2e7ef 0%, #f0f3f8 45%, #e8ecf4 100%);
+}
+
+/* 容器自身也加一层渐变增强立体感 */
+body.light .container {
+    background: radial-gradient(ellipse at 20% 50%, rgba(255,255,255,0.4) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(13,148,136,0.05) 0%, transparent 50%);
 }
 
 /* ==================== 基础重置 ==================== */
@@ -97,7 +106,7 @@ html { font-size: 18px; }
 
 * {
     box-sizing: border-box;
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
 }
 
 ::-webkit-scrollbar { width: 4px; }
@@ -163,47 +172,50 @@ body {
 }
 .title-bar-btn:hover { background: var(--surface-hover); color: var(--text); }
 
-/* ─── Mac 风格窗口控制按钮 ─── */
+/* ─── Win11 风格窗口控制按钮 ─── */
 .window-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 2px;
     -webkit-app-region: no-drag;
+    margin-left: -4px;
 }
 
 .win-ctrl {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
+    width: 46px;
+    height: 32px;
+    border-radius: 0;
     border: none;
     padding: 0;
     margin: 0;
     cursor: pointer;
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: filter 0.15s;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+    position: relative;
 }
 
 .win-ctrl .win-ctrl-icon {
-    font-size: 9px;
+    font-size: 11px;
     line-height: 1;
-    opacity: 0;
-    transition: opacity 0.15s;
-    color: rgba(0,0,0,0.6);
+    opacity: 0.6;
+    transition: opacity 0.1s;
     position: absolute;
 }
 
+.win-ctrl:hover { background: rgba(255,255,255,0.1); }
 .win-ctrl:hover .win-ctrl-icon { opacity: 1; }
 
-.win-close    { background: #ff5f57; border: 1px solid #e04944; }
-.win-minimize { background: #febc2e; border: 1px solid #dba222; }
-.win-maximize { background: #28c840; border: 1px solid #1aaa34; }
+body.light .win-ctrl:hover { background: rgba(0,0,0,0.08); }
 
-.win-close:hover    { filter: brightness(1.1); }
-.win-minimize:hover { filter: brightness(1.1); }
-.win-maximize:hover { filter: brightness(1.1); }
+.win-close:hover { background: #e81123; }
+.win-close:hover .win-ctrl-icon { color: #fff; }
+
+body.light .win-close:hover { background: #e81123; }
+body.light .win-close:hover .win-ctrl-icon { color: #fff; }
 
 /* ==================== 主体区域 ==================== */
 .body-area {
@@ -436,6 +448,48 @@ button:disabled:hover { background: var(--accent); }
 .toggle-switch[data-state="on"] .toggle-thumb {
     transform: translateX(20px);
 }
+
+/* ─── 3 段主题滑块 ─── */
+.theme-slider {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 40px;
+    background: var(--input-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-glass);
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+.theme-slider .theme-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 33.333%;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+    z-index: 0;
+}
+.theme-slider[data-pos="0"] .theme-indicator { transform: translateX(0); }
+.theme-slider[data-pos="1"] .theme-indicator { transform: translateX(100%); }
+.theme-slider[data-pos="2"] .theme-indicator { transform: translateX(200%); }
+.theme-slider .opt {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    z-index: 1;
+    transition: color 0.2s;
+    gap: 4px;
+}
+.theme-slider .opt.active { color: var(--accent); font-weight: 700; }
 
 .btn-danger {
     background: var(--danger-bg);
@@ -1003,16 +1057,39 @@ button:disabled:hover { background: var(--accent); }
 
 .tz-add-btn:hover { background: var(--surface-hover); color: var(--text-muted); }
 
+/* ==================== 入场动效 ==================== */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ==================== 模态弹窗 ==================== */
 .modal-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.5);
     display: flex;
     align-items: flex-start;
     justify-content: center;
     padding-top: 80px;
     z-index: 10;
+    animation: fadeIn 0.15s ease;
+}
+body.light .modal-overlay {
+    background: rgba(255,255,255,0.4);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
 }
 
 .modal {
@@ -1024,6 +1101,7 @@ button:disabled:hover { background: var(--accent); }
     overflow: hidden;
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+    animation: scaleIn 0.2s ease;
 }
 
 .modal-header {
@@ -1055,6 +1133,16 @@ button:disabled:hover { background: var(--accent); }
 .modal-close:hover { color: var(--text); }
 
 .modal-body { padding: 18px; }
+
+/* 弹窗内输入框取消纯白，改用玻璃风格 */
+.modal-body input,
+.modal-body select,
+.modal-body textarea,
+.todo-edit-body input,
+.todo-edit-body select,
+.todo-edit-body textarea {
+    background: var(--surface);
+}
 
 .settings-hint {
     font-size: var(--font-xs);
@@ -1188,6 +1276,7 @@ button:disabled:hover { background: var(--accent); }
     border-left: 4px solid var(--danger-text);
     border-radius: 6px;
     margin: 4px 16px;
+    animation: slideDown 0.25s ease;
 }
 
 .banner-item-text {
@@ -1394,6 +1483,15 @@ button:disabled:hover { background: var(--accent); }
 
 .todo-delete-btn:hover { color: var(--danger-text); }
 
+@keyframes todoLeave {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-6px); }
+}
+.todo-item.leaving {
+    animation: todoLeave 0.2s ease-in forwards;
+    overflow: hidden;
+}
+
 .todo-add-bar {
     display: flex;
     gap: 8px;
@@ -1405,61 +1503,73 @@ button:disabled:hover { background: var(--accent); }
 .todo-edit-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.5);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 100;
+    animation: fadeIn 0.15s ease;
+}
+body.light .todo-edit-overlay {
+    background: rgba(255,255,255,0.4);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
 }
 
 .todo-edit-modal {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    padding: 28px;
     width: 560px;
     max-width: 90vw;
     max-height: 90vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     box-shadow: 0 24px 60px var(--shadow);
+    animation: scaleIn 0.2s ease;
 }
 
 .todo-edit-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
-    position: sticky;
-    top: 0;
-    background: var(--bg);
-    z-index: 1;
-    padding-bottom: 6px;
+    padding: 20px 28px 12px 28px;
+    border-bottom: 1px solid var(--glass-border);
 }
 .todo-edit-title {
-    font-size: var(--font-md);
-    font-weight: 600;
+    font-size: var(--font-lg);
+    font-weight: 700;
     color: var(--text);
+    letter-spacing: -0.01em;
 }
 .todo-edit-close {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    font-size: 22px;
+    font-size: 20px;
     cursor: pointer;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     border-radius: 6px;
     line-height: 1;
+    transition: background 0.15s, color 0.15s;
 }
 .todo-edit-close:hover {
+    background: rgba(var(--accent-rgb), 0.12);
     color: var(--text);
-    background: var(--surface-hover);
+}
+
+.todo-edit-body {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding: 0 28px 28px 28px;
 }
 
 .todo-edit-field { margin-bottom: 10px; }

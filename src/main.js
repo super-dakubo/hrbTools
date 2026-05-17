@@ -37,7 +37,7 @@ const settingsCloseBtn = document.getElementById('settingsCloseBtn');
 const settingsBackupRoot = document.getElementById('settingsBackupRoot');
 const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
-const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeSlider = document.getElementById('themeSlider');
 const autoStartToggle = document.getElementById('autoStartToggle');
 const trayToggle = document.getElementById('trayToggle');
 const reminderToggle = document.getElementById('reminderToggle');
@@ -268,14 +268,14 @@ function formatDatetimeStr(rustStr, format) {
 function renderTimezoneSets() {
     var t0 = performance.now();
     const sorted = [...currentConfig.timezone_sets].sort((a, b) => {
-        if (a.id === 'beijing') return -1;
-        if (b.id === 'beijing') return 1;
+        if (a.id === DEFAULT_TZ_SET_ID) return -1;
+        if (b.id === DEFAULT_TZ_SET_ID) return 1;
         if (a.pinned !== b.pinned) return b.pinned - a.pinned;
         return a.sort_order - b.sort_order;
     });
 
     timezoneSets.innerHTML = sorted.map(set => {
-        const isBeijing = set.id === 'beijing';
+        const isBeijing = set.id === DEFAULT_TZ_SET_ID;
         const tzOptions = TIMEZONES.map(tz =>
             `<option value="${tz.value}" ${set.timezone === tz.value ? 'selected' : ''}>${tz.label}</option>`
         ).join('');
@@ -904,21 +904,16 @@ async function handleRestore(folderName) {
             alert(result.message);
             await refreshCurrentHashes();
             refreshBackupList();
-        } else if (result.message.startsWith('SELECT_FILES:')) {
-            const fileEntries = result.message.split(':').slice(1).join(':').split(';;');
-            const files = fileEntries.map(e => {
-                const parts = e.split('|');
-                return { name: parts[0], path: parts.slice(1).join('|') };
-            }).filter(f => f.name);
-            showRestoreFileModal(files, folderName);
-        } else if (result.message.startsWith('NEED_BACKUP_CONFIRM:')) {
-            const originalPath = result.message.split(':').slice(1).join(':');
+        } else if (result.available_files && result.available_files.length > 0) {
+            showRestoreFileModal(result.available_files, folderName);
+        } else if (result.need_backup_confirm) {
+            const originalPath = result.need_backup_confirm;
             if (confirm('当前存档「' + originalPath + '」未备份，是否需要先备份再恢复？\n\n确定 = 先备份再恢复\n取消 = 直接覆盖恢复')) {
                 const backupResult = await invoke('create_backup', {
                     gameId: selectedGameId, slotId: selectedSlotId,
                     filePaths: getCurrentFilePaths()
                 });
-                if (!backupResult.success && !backupResult.message.startsWith('SELECT_FILES:')) {
+                if (!backupResult.success) {
                     alert('备份当前文件失败: ' + backupResult.message);
                 }
                 await doRestoreWithFileSelect(folderName);
@@ -945,13 +940,8 @@ async function doRestoreWithFileSelect(folderName, skipBackup) {
     });
     if (result.success) {
         alert(result.message);
-    } else if (result.message.startsWith('SELECT_FILES:')) {
-        const fileEntries = result.message.split(':').slice(1).join(':').split(';;');
-        const files = fileEntries.map(e => {
-            const parts = e.split('|');
-            return { name: parts[0], path: parts.slice(1).join('|') };
-        }).filter(f => f.name);
-        showRestoreFileModal(files, folderName);
+    } else if (result.available_files && result.available_files.length > 0) {
+        showRestoreFileModal(result.available_files, folderName);
     } else {
         alert('恢复失败: ' + result.message);
     }
@@ -1125,9 +1115,11 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
     if (currentConfig.theme === 'system') applyTheme('system');
 });
 
-themeToggleBtn.addEventListener('click', () => {
-    const idx = THEME_ORDER.indexOf(currentConfig.theme);
-    const newTheme = THEME_ORDER[(idx + 1) % 3];
+themeSlider.addEventListener('click', function(e) {
+    var opt = e.target.closest('.opt');
+    if (!opt) return;
+    var newTheme = opt.dataset.theme;
+    if (newTheme === currentConfig.theme) return;
     currentConfig.theme = newTheme;
     applyTheme(newTheme);
     saveConfigToBackend();
@@ -1161,7 +1153,13 @@ function applyTheme(theme) {
     } else {
         document.body.classList.remove('light');
     }
-    themeToggleBtn.textContent = THEME_LABELS[theme] || THEME_LABELS.dark;
+    var pos = THEME_ORDER.indexOf(theme);
+    if (pos !== -1 && themeSlider) {
+        themeSlider.dataset.pos = pos;
+        themeSlider.querySelectorAll('.opt').forEach(function(o, i) {
+            o.classList.toggle('active', i === pos);
+        });
+    }
 }
 
 settingsSetDirBtn.addEventListener('click', async () => {
@@ -1200,6 +1198,16 @@ function updateSettingsDisplay() {
     if (reminderToggle) {
         reminderToggle.dataset.state = currentConfig.reminder_enabled !== false ? 'on' : 'off';
     }
+    // 主题滑块状态
+    if (themeSlider) {
+        var pos = THEME_ORDER.indexOf(currentConfig.theme || 'system');
+        if (pos !== -1) {
+            themeSlider.dataset.pos = pos;
+            themeSlider.querySelectorAll('.opt').forEach(function(o, i) {
+                o.classList.toggle('active', i === pos);
+            });
+        }
+    }
     renderHolidayYears();
 }
 
@@ -1215,25 +1223,10 @@ function renderHolidayYears() {
     list.innerHTML = years.map(function(h) {
         return '<div class="holiday-year-row">'
             + '<span>' + h.year + '年</span>'
-            + '<button class="btn-small holiday-edit-btn" data-year="' + h.year + '">编辑</button>'
-            + '<button class="btn-small holiday-del-btn" data-year="' + h.year + '">删除</button>'
+            + '<button class="btn-small" data-action="edit-holiday" data-year="' + h.year + '">编辑</button>'
+            + '<button class="btn-small" data-action="del-holiday" data-year="' + h.year + '">删除</button>'
             + '</div>';
     }).join('');
-
-    list.querySelectorAll('.holiday-edit-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            openHolidayEditor(parseInt(this.dataset.year, 10));
-        });
-    });
-    list.querySelectorAll('.holiday-del-btn').forEach(function(btn) {
-        btn.addEventListener('click', async function() {
-            var year = parseInt(this.dataset.year, 10);
-            currentConfig.holiday_data = (currentConfig.holiday_data || []).filter(function(h) { return h.year !== year; });
-            await saveConfigToBackend();
-            renderHolidayYears();
-            document.getElementById('holidayEditor').style.display = 'none';
-        });
-    });
 }
 
 function getTemplateJSON(year) {
@@ -1441,6 +1434,19 @@ function showBackupSuccess(msg) {
 
 // ==================== 工具函数 ====================
 
+const DEFAULT_TZ_SET_ID = 'beijing';
+
+// 安全推进月份：当月天数不足时不溢出到下个月，而是 clamp 到月末
+function safeAddMonth(date) {
+    var target = new Date(date);
+    var origDay = target.getDate();
+    target.setMonth(target.getMonth() + 1);
+    if (target.getDate() !== origDay) {
+        target.setDate(0);
+    }
+    return target;
+}
+
 function escapeHtml(str) {
     // 纯字符串替换，不创建 DOM 元素 — 避免 GC 压力
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -1617,11 +1623,23 @@ function toggleTodoDone(id) {
 }
 
 function deleteTodo(id) {
-    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
-    if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
-    currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
-    saveConfigToBackend();
-    renderTodos();
+    var item = document.querySelector('.todo-item[data-id="' + id + '"]');
+    if (item) {
+        item.classList.add('leaving');
+        setTimeout(function() {
+            var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+            if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
+            currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
+            saveConfigToBackend();
+            renderTodos();
+        }, 200);
+    } else {
+        var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+        if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
+        currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
+        saveConfigToBackend();
+        renderTodos();
+    }
 }
 
 function createNextRepeat(todo) {
@@ -1630,7 +1648,7 @@ function createNextRepeat(todo) {
 
     if (todo.repeat === 'daily') nextDate.setDate(nextDate.getDate() + 1);
     else if (todo.repeat === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
-    else if (todo.repeat === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+    else if (todo.repeat === 'monthly') nextDate = safeAddMonth(nextDate);
     else return null;
 
     var newTodo = JSON.parse(JSON.stringify(todo));
@@ -1644,7 +1662,7 @@ function createNextRepeat(todo) {
         var d = new Date(todo.due_date + 'T00:00:00');
         if (todo.repeat === 'daily') d.setDate(d.getDate() + 1);
         else if (todo.repeat === 'weekly') d.setDate(d.getDate() + 7);
-        else if (todo.repeat === 'monthly') d.setMonth(d.getMonth() + 1);
+        else if (todo.repeat === 'monthly') d = safeAddMonth(d);
         newTodo.due_date = d.toISOString().slice(0, 10);
     }
     if (newTodo.reminder && newTodo.reminder.datetime && todo.repeat) {
@@ -1659,7 +1677,7 @@ function createNextRepeat(todo) {
             newTodo.reminder.datetime = r.toISOString().slice(0, 16);
         } else if (todo.repeat === 'monthly') {
             var r = new Date(newTodo.reminder.datetime);
-            r.setMonth(r.getMonth() + 1);
+            r = safeAddMonth(r);
             newTodo.reminder.datetime = r.toISOString().slice(0, 16);
         }
     }
@@ -1676,7 +1694,7 @@ function recalculateNextDue(todo) {
         var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         if (todo.repeat === 'daily') next.setDate(next.getDate() + 1);
         else if (todo.repeat === 'weekly') next.setDate(next.getDate() + 7);
-        else if (todo.repeat === 'monthly') next.setMonth(next.getMonth() + 1);
+        else if (todo.repeat === 'monthly') next = safeAddMonth(next);
         todo.due_date = next.toISOString().slice(0, 10);
         if (todo.reminder && todo.reminder.datetime) {
             if (todo.repeat === 'daily') {
@@ -1690,7 +1708,7 @@ function recalculateNextDue(todo) {
                 todo.reminder.datetime = r.toISOString().slice(0, 16);
             } else if (todo.repeat === 'monthly') {
                 var r = new Date(todo.reminder.datetime);
-                r.setMonth(r.getMonth() + 1);
+                r = safeAddMonth(r);
                 todo.reminder.datetime = r.toISOString().slice(0, 16);
             }
         }
@@ -1905,8 +1923,9 @@ function openTodoEditModal(id) {
     overlay.innerHTML = '<div class="todo-edit-modal">'
         + '<div class="todo-edit-header">'
             + '<div class="todo-edit-title">' + (isNew ? '新建待办' : '编辑待办') + '</div>'
-            + '<button class="todo-edit-close" id="editCloseBtn">&times;</button>'
+            + '<button class="todo-edit-close" id="editCloseBtn">&#x2715;</button>'
         + '</div>'
+        + '<div class="todo-edit-body">'
 
         + '<div class="todo-edit-field">'
             + '<label>内容</label>'
@@ -1983,6 +2002,7 @@ function openTodoEditModal(id) {
                 + '</span>'
             + '</div>'
         + '</div>'
+    + '</div>'
     + '</div>';
 
     document.querySelector('.container').appendChild(overlay);
@@ -2217,10 +2237,22 @@ document.addEventListener('DOMContentLoaded', async function() {
                     var btn = document.createElement('button');
                     btn.className = 'banner-item-close';
                     btn.innerHTML = '&times;';
-                    btn.addEventListener('click', function() {
+                    btn.addEventListener('click', async function() {
                         var idx = window.__bannerQueue.indexOf(item);
                         if (idx !== -1) window.__bannerQueue.splice(idx, 1);
                         window.__renderBanners();
+                        // 标记对应待办为已通知，防止重启后重现
+                        if (item.todoId) {
+                            var todo = (currentConfig.todos || []).find(function(t) { return t.id === item.todoId; });
+                            if (todo && todo.reminder) {
+                                todo.last_notified = Date.now();
+                                try {
+                                    await saveConfigToBackend();
+                                } catch (e) {
+                                    window.__log.error('横幅关闭持久化失败: ' + e);
+                                }
+                            }
+                        }
                     });
                     row.appendChild(btn);
                     area.appendChild(row);
@@ -2236,32 +2268,23 @@ document.addEventListener('DOMContentLoaded', async function() {
                     area.appendChild(more);
                 }
             };
-            window.__onReminderFired = function(text) {
-                // 文本去重：相同文本的横幅不重复添加
-                var exists = window.__bannerQueue.some(function(item) { return item.text === text; });
-                if (exists) return;
-                window.__bannerQueue.push({ text: text, id: ++window.__bannerIdSeq });
-                window.__renderBanners();
-                // 刷新待办列表
-                invoke('get_config').then(function(fresh) {
-                    currentConfig.todos = fresh.todos;
-                    renderTodos();
-                }).catch(function() {});
-            };
+            window.__onReminderFired = null; // 预留，当前由 Rust 线程推送系统通知
 
-            // 启动时扫描过期提醒，展示横幅（重启后能看到未处理的过期提醒）
+            // 启动时扫描过期提醒，展示横幅（跳过已被关闭的）
             (function() {
                 var now = new Date();
                 var items = [];
                 (currentConfig.todos || []).forEach(function(t) {
                     if (t.done || !t.reminder || !t.reminder.datetime) return;
+                    // 跳过已被用户关闭过的提醒
+                    if (t.last_notified) return;
                     var rt = new Date(t.reminder.datetime);
                     if (!isNaN(rt) && rt <= now) {
-                        items.push('⏰ ' + t.text);
+                        items.push({ text: '⏰ ' + t.text, todoId: t.id });
                     }
                 });
-                items.forEach(function(text) {
-                    window.__bannerQueue.push({ text: text, id: ++window.__bannerIdSeq });
+                items.forEach(function(item) {
+                    window.__bannerQueue.push({ text: item.text, id: ++window.__bannerIdSeq, todoId: item.todoId });
                 });
                 window.__renderBanners();
                 if (items.length > 0) {
@@ -2457,6 +2480,22 @@ function setupEventDelegation() {
             renderFileTags();
             await refreshCurrentHashes();
             refreshBackupList();
+        }
+    });
+
+    // ─── 节假日管理 ───
+    document.getElementById('holidayYearsList').addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        if (btn.dataset.action === 'edit-holiday') {
+            openHolidayEditor(parseInt(btn.dataset.year, 10));
+        } else if (btn.dataset.action === 'del-holiday') {
+            var year = parseInt(btn.dataset.year, 10);
+            currentConfig.holiday_data = (currentConfig.holiday_data || []).filter(function(h) { return h.year !== year; });
+            saveConfigToBackend().then(function() {
+                renderHolidayYears();
+                document.getElementById('holidayEditor').style.display = 'none';
+            });
         }
     });
 

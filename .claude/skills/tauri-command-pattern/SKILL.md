@@ -28,9 +28,17 @@ fn my_command(app: tauri::AppHandle, param1: String, param2: i32) -> OpResult {
 }
 ```
 
-- 读操作用 `tauri::State` 或直接返回数据
-- 写操作统一返回 `OpResult { success: bool, message: String }`
+- 读操作直接返回数据，写操作统一返回 `OpResult { success: bool, message: String }`
 - 需要配置文件时通过 `load_config(&app)` / `save_config(&app, &config)`
+
+### `AppHandle` vs `tauri::State`
+
+| 方式 | 适用场景 | 示例 |
+|------|---------|------|
+| `app: tauri::AppHandle` | 函数需要 `load_config`、`save_config` 或读写文件路径（通过 `app.path()`） | 绝大多数 CRUD 命令 |
+| `state: tauri::State<'_, MyState>` | 全局单例状态（如数据库连接池），在 `setup()` 中用 `app.manage()` 注册 | 跨请求共享数据 |
+
+**本项目当前只需要 `tauri::AppHandle`**（所有状态通过 config.json 持久化，无需 `State`）。只在引入全局共享资源时再用 `State`。
 
 ## 请求/响应结构体
 

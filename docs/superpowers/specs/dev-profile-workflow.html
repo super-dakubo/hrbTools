@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEV_PROFILE 工作流设计</title>
+<style>
+:root {
+  --bg: #1a1e2e; --surface: rgba(255,255,255,0.04);
+  --text: rgba(255,255,255,0.85); --text-dim: rgba(255,255,255,0.35);
+  --border: rgba(255,255,255,0.08);
+  --blue: #4b8bf4; --green: #34d399; --yellow: #fbbf24; --red: #f87171;
+  --purple: #a78bfa; --orange: #fb923c;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; padding: 24px; font-size: 15px; }
+h1 { font-size: 1.3rem; margin-bottom: 4px; }
+.subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 24px; }
+
+/* ===== Layout ===== */
+.columns { display: flex; gap: 16px; margin-bottom: 32px; }
+.col { flex: 1; background: var(--surface); border-radius: 10px; border: 1px solid var(--border); padding: 16px; }
+.col h2 { font-size: 0.95rem; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.col h2 .badge { font-size: 0.6rem; padding: 2px 6px; border-radius: 6px; font-weight: 600; }
+
+.doc { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.78rem; line-height: 1.5; }
+.doc .name { font-weight: 600; color: var(--blue); }
+.doc .meta { color: var(--text-dim); font-size: 0.7rem; margin-top: 2px; }
+.tag { display: inline-block; font-size: 0.6rem; padding: 1px 6px; border-radius: 5px; font-weight: 600; margin-right: 4px; }
+.tag-master { background: rgba(75,139,244,0.2); color: var(--blue); }
+.tag-generated { background: rgba(52,211,153,0.2); color: var(--green); }
+.tag-local { background: rgba(251,191,36,0.2); color: var(--yellow); }
+
+/* ===== Arrows ===== */
+.flow { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 20px 0; font-size: 0.72rem; color: var(--text-dim); }
+.flow-line { flex: 1; height: 1px; background: var(--border); }
+.flow-step { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 14px; font-size: 0.72rem; white-space: nowrap; }
+.flow-step .key { color: var(--yellow); font-weight: 600; }
+
+/* ===== Operation cards ===== */
+.ops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+.op-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.op-card h3 { font-size: 0.85rem; margin: 0 0 8px; }
+.op-card h3 .cmd { font-family: monospace; color: var(--yellow); }
+.op-card ul { margin: 0; padding-left: 16px; font-size: 0.75rem; color: var(--text-dim); line-height: 1.6; }
+
+/* ===== Legend ===== */
+.legend { display: flex; gap: 20px; font-size: 0.72rem; color: var(--text-dim); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+
+/* ===== Detail Section ===== */
+.detail { margin-top: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.detail h3 { font-size: 0.9rem; margin: 0 0 12px; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.detail-col { }
+.detail-col h4 { font-size: 0.78rem; margin: 0 0 8px; color: var(--text-dim); font-weight: 500; }
+.code-block { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px 12px; font-family: monospace; font-size: 0.72rem; line-height: 1.5; overflow-x: auto; }
+.code-block .comment { color: var(--text-dim); }
+.detail-table { width: 100%; font-size: 0.72rem; border-collapse: collapse; }
+.detail-table th { text-align: left; color: var(--text-dim); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.detail-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.icon-arrow { color: var(--text-dim); font-size: 1.2rem; }
+
+/* ===== Action highlight ===== */
+.action-user { background: rgba(251,191,36,0.1); border-left: 3px solid var(--yellow); padding: 8px 12px; border-radius: 4px; font-size: 0.75rem; margin: 8px 0; }
+.action-ai { background: rgba(75,139,244,0.08); border-left: 3px solid var(--blue); padding: 8px 12px; border-radius: 4px; font-size: 0.75rem; margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<h1>DEV_PROFILE 知识管理系统</h1>
+<div class="subtitle">种子包 + Skill 同步器 · 纯本地 · 跨环境 · 工具无关</div>
+
+<!-- ===== Three Columns ===== -->
+<div class="columns">
+  <!-- Home -->
+  <div class="col">
+    <h2>🏠 家里 <span class="badge" style="background:rgba(75,139,244,0.2);color:var(--blue);">MASTER</span></h2>
+    <div class="doc">
+      <div><span class="tag tag-master">seed.yaml</span> <span class="name">版本号</span></div>
+      <div class="meta">版本 3 · 2026-05-10 · 增量 changelog</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-master">profile/</span> <span class="name">你的个人侧写</span></div>
+      <div class="meta">技术栈 · 习惯 · 优劣势 · 编码规范 · AI 协作规则</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-master">config/</span> <span class="name">全局配置模板</span></div>
+      <div class="meta">settings.json 片段 · 权限规则 · 环境变量 · deny 列表</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-master">knowledge/</span> <span class="name">知识手册</span></div>
+      <div class="meta">Rust/Tauri 踩坑 · Tauri 命名约定 · reg.exe 性能 · DST 规则</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-master">scaffolds/</span> <span class="name">项目脚手架模板</span></div>
+      <div class="meta">按项目类型生成 CLAUDE.md · LESSONS.md · docs/ · settings.local.json</div>
+    </div>
+    <div class="action-user">
+      👤 <strong>你做：</strong>编辑种子包内容 · `git add` / 复制到U盘
+    </div>
+  </div>
+
+  <!-- Transport -->
+  <div class="col" style="flex:0.6;">
+    <h2>🔌 传输介质 <span class="badge" style="background:rgba(251,191,36,0.2);color:var(--yellow);">LOCAL</span></h2>
+    <div style="text-align:center;padding:12px 0;">
+      <div style="font-size:2rem;margin-bottom:8px;">💾</div>
+      <div style="font-size:0.85rem;font-weight:600;">U 盘 / 共享文件夹</div>
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:4px;">纯文件，无需 git / 无需网络</div>
+    </div>
+    <div class="action-user">
+      👤 <strong>你做：</strong>插U盘跑 <code style="color:var(--yellow);">sync-profile --seed-path E:\dev-profile init</code>
+    </div>
+    <div style="display:flex;justify-content:center;gap:8px;margin-top:10px;">
+      <span style="background:rgba(251,191,36,0.15);color:var(--yellow);padding:2px 10px;border-radius:10px;font-size:0.65rem;">❌ 无需 git</span>
+      <span style="background:rgba(251,191,36,0.15);color:var(--yellow);padding:2px 10px;border-radius:10px;font-size:0.65rem;">❌ 无需网络</span>
+      <span style="background:rgba(251,191,36,0.15);color:var(--yellow);padding:2px 10px;border-radius:10px;font-size:0.65rem;">✅ 纯文件</span>
+    </div>
+  </div>
+
+  <!-- Work -->
+  <div class="col">
+    <h2>🏢 工作环境 <span class="badge" style="background:rgba(52,211,153,0.2);color:var(--green);">TARGET</span></h2>
+    <div class="doc">
+      <div><span class="tag tag-generated">~/.claude/</span> <span class="name">全局 CLAUDE.md</span></div>
+      <div class="meta">← 从 profile/ 生成 · 你这个人到了新环境</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-generated">~/.claude/</span> <span class="name">settings.json</span></div>
+      <div class="meta">← 从 config/ 生成 · 权限/环境变量就绪</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-generated">项目根/</span> <span class="name">CLAUDE.md</span></div>
+      <div class="meta">← 从 scaffolds/ 生成 · 项目专属配置</div>
+    </div>
+    <div class="doc">
+      <div><span class="tag tag-generated">项目根/</span> <span class="name">docs/LESSONS.md</span></div>
+      <div class="meta">← 生成了骨架 · 你开始往里面填坑</div>
+    </div>
+    <div class="action-ai">
+      🤖 <strong>Skill 做：</strong>读取种子包 → 写入对应位置
+    </div>
+  </div>
+</div>
+
+<!-- ===== Flow Arrows ===== -->
+<div class="flow">
+  <span class="flow-step">👤 <span class="key">编辑</span> 种子包</span>
+  <span class="flow-line"></span>
+  <span class="flow-step">💾 <span class="key">复制</span> 到U盘</span>
+  <span class="flow-line"></span>
+  <span class="flow-step">🤖 <span class="key">init</span> 新项目</span>
+  <span class="flow-line"></span>
+  <span class="flow-step">🤖 <span class="key">pull</span> 经验回来</span>
+</div>
+
+<!-- ===== Three Operations ===== -->
+<h2 style="font-size:1rem;margin-top:32px;">三个核心操作</h2>
+<div class="ops">
+  <div class="op-card">
+    <h3><span class="cmd">sync-profile init</span></h3>
+    <div style="font-size:0.72rem;color:var(--green);margin-bottom:6px;">种子包 → 新环境 / 新项目</div>
+    <ul>
+      <li>读取种子包 <code>profile/</code> → 写入全局 CLAUDE.md</li>
+      <li>读取 <code>config/</code> → 合并到全局 settings.json</li>
+      <li>按项目类型选模板 → 生成项目 CLAUDE.md</li>
+      <li>生成项目 <code>docs/</code> 骨架 + <code>.claude/settings.local.json</code></li>
+      <li>生成 <code>docs/LESSONS.md</code>（来自 <code>knowledge/</code>）</li>
+    </ul>
+    <div class="action-ai" style="margin:6px 0 0;">
+      🤖 init 后新项目的 AI 已经认识你了
+    </div>
+  </div>
+
+  <div class="op-card">
+    <h3><span class="cmd">sync-profile pull</span></h3>
+    <div style="font-size:0.72rem;color:var(--purple);margin-bottom:6px;">项目经验 → 追加到种子包</div>
+    <ul>
+      <li>读取项目的 <code>docs/LESSONS.md</code></li>
+      <li>AI 提取新增条目，判断归入哪个文件</li>
+      <li>确认的自动归类 + 展示操作清单</li>
+      <li>不确定的停下来问你</li>
+      <li>你扫一眼清单，确认后追加</li>
+    </ul>
+    <div class="action-user" style="margin:6px 0 0;">
+      👤 看一眼操作清单，有问题及时纠正
+    </div>
+  </div>
+
+  <div class="op-card">
+    <h3><span class="cmd">sync-profile refresh</span></h3>
+    <div style="font-size:0.72rem;color:var(--orange);margin-bottom:6px;">种子包更新 → 已有项目同步更新</div>
+    <ul>
+      <li>对比 <code>seed.yaml</code> 版本号</li>
+      <li>种子包有新增 → 覆盖项目模板部分</li>
+      <li><strong>保留</strong>项目自定义内容（LESSONS.md 你填的坑不动）</li>
+      <li>脚手架改了（如 <code>ARCHITECTURE.md</code> → <code>REFERENCE.md</code>）→ 项目跟着变</li>
+    </ul>
+    <div class="action-ai" style="margin:6px 0 0;">
+      🤖 只在模板层覆盖，不动你写的内容
+    </div>
+  </div>
+</div>
+
+<!-- ===== Detail: Scaffold switching ===== -->
+<div class="detail">
+  <h3>🔧 关键设计：脚手架切换（解决 "以后换文档方式"）</h3>
+  <div class="detail-grid">
+    <div class="detail-col">
+      <h4>现在的 <code>scaffolds/rust-tauri/</code></h4>
+      <div class="code-block">
+        scaffolds/rust-tauri/<br>
+        ├── CLAUDE.md.hbs<br>
+        ├── LESSONS.md.hbs<br>
+        ├── <span style="color:var(--blue);">ARCHITECTURE.md.hbs</span>  ← 当前你用的<br>
+        ├── design-system.md.hbs<br>
+        └── settings.local.json.hbs
+      </div>
+    </div>
+    <div class="detail-col">
+      <h4>将来改成 <code>REFERENCE.md</code></h4>
+      <div class="code-block">
+        scaffolds/rust-tauri/<br>
+        ├── CLAUDE.md.hbs<br>
+        ├── LESSONS.md.hbs<br>
+        ├── <span style="color:var(--green);">REFERENCE.md.hbs</span>       ← 换成这个<br>
+        ├── design-system.md.hbs<br>
+        └── settings.local.json.hbs
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:0.75rem;color:var(--text-dim);">
+    你改种子包里的脚手架模板 → 在已有项目跑 <code>sync-profile refresh</code> →
+    旧项目检测到模板变了 → 删除 <code>ARCHITECTURE.md</code>（但你写的注释不会丢，先询问你）→
+    生成新的 <code>REFERENCE.md</code> 骨架。
+    新项目跑 <code>init</code> 直接就是新模板。
+  </div>
+</div>
+
+<!-- ===== Legend ===== -->
+<div class="legend">
+  <span class="legend-item"><span class="tag tag-master" style="margin:0;">MASTER</span> 种子包文件（你手动维护）</span>
+  <span class="legend-item"><span class="tag tag-generated" style="margin:0;">TARGET</span> 自动生成的文件（Skill 生成）</span>
+  <span class="legend-item"><span class="tag tag-local" style="margin:0;">LOCAL</span> 传输介质（纯文件）</span>
+  <span class="legend-item">👤 你的操作</span>
+  <span class="legend-item">🤖 Skill 自动操作</span>
+</div>
+
+<!-- ===== User Action Summary ===== -->
+<h2 style="font-size:1rem;margin-top:28px;">你的日常操作流</h2>
+<table class="detail-table">
+  <tr><th>场景</th><th>你做什么</th><th>得到什么</th></tr>
+  <tr>
+    <td style="font-weight:600;">开始新项目</td>
+    <td><code>sync-profile init</code> → 选项目类型</td>
+    <td>AI 认识你 + 项目有完整文档骨架</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">项目踩了坑</td>
+    <td>在 LESSONS.md 里记录 → <code>sync-profile pull</code></td>
+    <td>经验进入种子包，以后所有项目都能引用</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">换了文档习惯</td>
+    <td>改种子包 scaffolds/ 模板 → <code>sync-profile refresh</code></td>
+    <td>所有项目统一更新文档结构</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">内网环境</td>
+    <td>U盘插进去，<code>--seed-path E:\dev-profile init</code></td>
+    <td>内网电脑和家里一模一样的 AI 协作体验</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">更新了个人侧写</td>
+    <td>改 profile/ 里的文件 → <code>sync-profile refresh</code></td>
+    <td>全局 CLAUDE.md 更新 + 所有项目重建引用</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">换工作/换电脑</td>
+    <td>把种子包复制到新电脑 → <code>init --global-only</code></td>
+    <td>你这个人到了新环境，AI 一样了解你</td>
+  </tr>
+</table>
+
+</body>
+</html>

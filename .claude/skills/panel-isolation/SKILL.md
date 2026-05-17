@@ -1,28 +1,38 @@
 ---
 name: panel-isolation
-description: 使用当要修改 src/main.js 时。此文件包含三个独立功能面板的代码，修改其中一个绝不能动其他面板的代码。曾因此出过数据丢失事故。
+description: 使用当要修改 src/main.js 时。此文件包含四个独立功能面板的代码（时间转换/存档管理/待办工具/日志面板），修改其中一个绝不能动其他面板的代码。曾因此出过数据丢失事故。
 ---
 
 # main.js 面板隔离规则
 
 ## 概述
 
-`src/main.js` 包含三个完全独立的功能面板，共用同一个文件但没有任何共享状态或逻辑。修改一个面板时，绝不能改动其他面板的任何代码。
+`src/main.js` 包含多个独立的功能面板，共用同一个文件但**没有任何共享状态或逻辑**。修改一个面板时，绝不能改动其他面板的任何代码。
 
-## 三个面板
+## 独立面板（4 个）
 
-| 面板 | 核心函数 | HTML 容器 |
-|------|---------|----------|
-| 时间转换 | `renderTimezoneSets`, `saveTimezoneValues`, `restoreTimezoneValues`, `initTimezoneDefaults` | `#timezoneSets` |
-| 存档管理 | `renderGameTabs`, `renderSlotTabs`, `renderFileTags`, `refreshBackupList` | `#gameTabs`, `#slotTabs`, `#fileTags`, `#backupList` |
-| 待办工具 | `renderTodos`, `openTodoEditModal`, `toggleTodoDone` | `#todoList` |
+每个面板有独立的渲染函数、数据逻辑和事件处理，互不依赖：
 
-## 规则
+| 面板 | 核心函数 | HTML 容器 | 代码区块 |
+|------|---------|----------|---------|
+| 时间转换 | `renderTimezoneSets`, `saveTimezoneValues`, `restoreTimezoneValues`, `initTimezoneDefaults` | `#timezoneSets` | `=== 时间转换 ===` |
+| 存档管理 | `renderGameTabs`, `renderSlotTabs`, `renderFileTags`, `refreshBackupList` | `#gameTabs`, `#slotTabs`, `#fileTags`, `#backupList` | `=== 配置管理 ===` ~ `=== 恢复文件选择弹窗 ===` |
+| 待办工具 | `renderTodos`, `openTodoEditModal`, `toggleTodoDone` | `#todoList` | `=== 待办工具 ===` |
+| 日志面板 | `renderLogPanel`, `bindLogPanelEvents`，IIFE `window.__log` | `#logPanel` | `=== 日志系统 ===` + `=== 日志面板渲染 ===` |
 
-1. 修改前用 `// ====================` 分隔注释定位目标区块
-2. **只改目标面板的区块内的代码**，不碰其他面板的任何行
-3. 共用工具函数（`escapeHtml`, `setButtonLoading`, `shortenPath`）在 `// ==================== 工具函数 ====================` 区块中，修改时需确认两端兼容
-4. 代码审查必须 diff 对比原始文件，确认未改动的区块确实未被触碰
+## 基础设施（非面板，所有面板共用）
+
+这些区块不属于任何面板，修改时需注意兼容性：
+
+| 区块 | 说明 |
+|------|------|
+| `=== 状态 ===` / `=== DOM 引用 ===` | 全局变量和 DOM 缓存 |
+| `=== Tab 栏管理 ===` / `=== Tab 拖拽 ===` | Tab 切换 + 拖拽排序，跨面板 |
+| `=== 设置弹窗 ===` / `=== 节假日管理 ===` | 全局设置，可能被任一面板触发 |
+| `=== 按钮防重复 ===` / `=== 消息提示 ===` | 工具函数，所有面板共用 |
+| `=== 工具函数 ===` | `escapeHtml`、时间格式化等 |
+| `=== 事件委托 ===` | `setupEventDelegation()` 一次性绑定 |
+| `=== 启动 ===` | `DOMContentLoaded` 分步初始化
 
 ## 禁止
 

@@ -16,14 +16,14 @@
 
     <!-- 自定义标题栏 -->
     <div class="title-bar">
-        <div class="window-controls">
-            <button class="win-ctrl win-close" id="closeBtn" title="关闭"><span class="win-ctrl-icon">&#x2715;</span></button>
-            <button class="win-ctrl win-minimize" id="minimizeBtn" title="最小化"><span class="win-ctrl-icon">&#x2014;</span></button>
-            <button class="win-ctrl win-maximize" id="maximizeBtn" title="最大化"><span class="win-ctrl-icon">&#x25A1;</span></button>
-        </div>
         <span class="title-bar-text">HRB Tools</span>
         <span class="title-bar-spacer"></span>
         <button class="title-bar-btn" id="settingsBtn" title="设置">&#9881;</button>
+        <div class="window-controls">
+            <button class="win-ctrl win-minimize" id="minimizeBtn" title="最小化"><span class="win-ctrl-icon">&#x2014;</span></button>
+            <button class="win-ctrl win-maximize" id="maximizeBtn" title="最大化"><span class="win-ctrl-icon">&#x25A1;</span></button>
+            <button class="win-ctrl win-close" id="closeBtn" title="关闭"><span class="win-ctrl-icon">&#x2715;</span></button>
+        </div>
     </div>
 
     <!-- 提醒横幅区（标题栏下方，不遮盖内容） -->
@@ -162,7 +162,12 @@
                 </div>
                 <div class="input-group">
                     <label>主题模式</label>
-                    <button id="themeToggleBtn" class="btn-small" style="width:100%">🌙 暗色模式</button>
+                    <div id="themeSlider" class="theme-slider" data-pos="0">
+                        <div class="theme-indicator"></div>
+                        <span class="opt" data-theme="system">🌓 跟随系统</span>
+                        <span class="opt" data-theme="dark">🌙 暗色</span>
+                        <span class="opt" data-theme="light">☀️ 亮色</span>
+                    </div>
                 </div>
                 <div class="input-group">
                     <div class="row" style="justify-content:space-between;margin-top:12px;">
