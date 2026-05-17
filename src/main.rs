@@ -1593,6 +1593,7 @@ fn main() {
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
             let _tray = TrayIconBuilder::new()
+                .icon(tauri::image::Image::new_owned(include_bytes!("../icons/32x32.raw").to_vec(), 32, 32))
                 .tooltip("HRB Tools")
                 .menu(&menu)
                 .on_menu_event(move |app, event| {
