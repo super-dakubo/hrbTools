@@ -1890,6 +1890,13 @@ function calculateFireAt(todo) {
 function syncPendingReminders() {
     currentConfig.pending_reminders = currentConfig.pending_reminders || [];
     var changed = false;
+
+    // 清理已删除待办的孤儿 pending_reminder
+    var todoIds = new Set((currentConfig.todos || []).map(function(t) { return t.id; }));
+    var before = currentConfig.pending_reminders.length;
+    currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return todoIds.has(r.todo_id); });
+    if (currentConfig.pending_reminders.length !== before) changed = true;
+
     (currentConfig.todos || []).forEach(function(t) {
         if (t.done || t.paused || !t.reminder) {
             var had = currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; });
