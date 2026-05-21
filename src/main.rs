@@ -481,7 +481,9 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
     // 备份旧配置：写新配置前将已有 config.json 备份为 config.json.bak
     if path.exists() {
         let bak_path = path.with_extension("json.bak");
-        let _ = fs::copy(&path, &bak_path);
+        if let Err(e) = fs::copy(&path, &bak_path) {
+            log_error(app, &format!("备份配置文件失败: {}", e));
+        }
     }
 
     if let Ok(json) = serde_json::to_string_pretty(config) {
