@@ -22,6 +22,7 @@
         "height": 720,
         "resizable": false,
         "decorations": false,
+        "visible": false,
         "center": true,
         "additionalBrowserArgs": "--disable-features=msWebOOUI --enable-gpu-rasterization --enable-zero-copy --disable-gpu-vsync"
       }

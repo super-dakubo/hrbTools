@@ -70,7 +70,7 @@ GameConfig { id: UUID, name, slots: Vec<SlotConfig>, pinned }
 SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_file_patterns: Vec<String> }
 ```
 
-**`set_auto_start` 条件执行：** `set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。`reg.exe` 子进程在 GUI 应用中约 3.3 秒，不要在任何读路径或保存路径中无条件调用。
+**`set_auto_start` 条件执行：** `set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。`reg.exe` 子进程在 GUI 应用中约 3.3 秒，不要在任何读路径或保存路径中无条件调用。注册表写入路径追加 `--minimized` 参数以实现开机自启时保持隐藏。
 
 ### 前端（src/main.js）分区
 
@@ -143,7 +143,7 @@ JS syncPendingReminders() → pending_reminders
 - `tauri::command` 参数名必须用 **camelCase**，结构体字段必须用 **snake_case**（Tauri 宏 vs serde 差异）
 - 写操作必须返回 `OpResult { success: bool, message: string }`
 - 新增命令必须在 `main()` 的 `.invoke_handler(tauri::generate_handler![...])` 中注册
-- `setup()` 中初始化：**系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每 5 秒轮询 config.json，检查待办提醒时间并发送通知）
+- `setup()` 中初始化：**`--minimized` 检查**（无此参数时 `window.show()` 显示窗口）+ **系统托盘**（显示/退出菜单，单击显示窗口）+ **提醒线程**（`std::thread::spawn`，每 5 秒轮询 config.json，检查待办提醒时间并发送通知）
 - **`sanitize_path_component()`** — 所有从 `game_id`/`slot_id`/`folder_name` 等用户参数构建文件系统路径的命令，必须先调用此函数检查路径穿越
 - **Win32 FFI** — `unsafe extern "system" { fn Beep(...) }` 受 `#[cfg(target_os = "windows")]` 保护，调用点也需同样防护
 
@@ -188,4 +188,4 @@ JS syncPendingReminders() → pending_reminders
 
 ### 窗口
 
-960×720 不可缩放，无边框。最小化隐藏到托盘，关闭完全退出。`config.minimize_to_tray` 控制开关。
+960×720 不可缩放，无边框，默认隐藏（`visible: false`）。启动时检查 `--minimized` 参数：有则保持隐藏（开机自启场景），无则调用 `window.show()`（手动启动场景）。最小化隐藏到托盘，关闭完全退出。`config.minimize_to_tray` 控制开关。

@@ -499,7 +499,7 @@ fn set_auto_start(enabled: bool) {
 
     if enabled {
         if let Some(path) = exe_path {
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = format!("\"{}\" --minimized", path.to_string_lossy());
             let _ = std::process::Command::new("reg")
                 .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", app_name, "/t", "REG_SZ", "/d", &path_str, "/f"])
                 .output();
@@ -1667,6 +1667,15 @@ fn main() {
             let show = MenuItem::with_id(app, "show", "显示", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+
+            // 无 --minimized 参数（手动启动）时显示窗口
+            let is_minimized = std::env::args().any(|a| a == "--minimized");
+            if !is_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
 
             let _tray = TrayIconBuilder::new()
                 .icon(tauri::image::Image::new_owned(include_bytes!("../icons/32x32.raw").to_vec(), 32, 32))
