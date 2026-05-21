@@ -817,72 +817,73 @@ async function refreshBackupList() {
         return;
     }
     _backupListLock = true;
-    var t0 = performance.now();
-    if (!selectedGameId || !selectedSlotId) {
-        backupList.innerHTML = '<div class="empty-hint">请先选择游戏和存档位</div>';
-        backupListTitle.textContent = '备份记录';
-        _backupListLock = false;
-        return;
-    }
-
-    const game = currentConfig.games.find(g => g.id === selectedGameId);
-    const slot = game ? game.slots.find(s => s.id === selectedSlotId) : null;
-    backupListTitle.textContent = game && slot
-        ? `备份记录 — ${game.name} / ${slot.name}`
-        : '备份记录';
-
     try {
-        var tIpc = performance.now();
-        const backups = await invoke('list_backups', {
-            gameId: selectedGameId,
-            slotId: selectedSlotId
-        });
-        var ipcMs = +(performance.now() - tIpc).toFixed(2);
-
-        if (backups.length === 0) {
-            backupList.innerHTML = '<div class="empty-hint">暂无备份</div>';
-            window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: 0, ipc: ipcMs });
-            _backupListLock = false;
+        var t0 = performance.now();
+        if (!selectedGameId || !selectedSlotId) {
+            backupList.innerHTML = '<div class="empty-hint">请先选择游戏和存档位</div>';
+            backupListTitle.textContent = '备份记录';
             return;
         }
 
-        const currentHashes = currentHashesBySlot[selectedGameId + ':' + selectedSlotId] || {};
-        const hashCounts = {};
-        backups.forEach(b => { if (b.content_hash) hashCounts[b.content_hash] = (hashCounts[b.content_hash] || 0) + 1; });
+        const game = currentConfig.games.find(g => g.id === selectedGameId);
+        const slot = game ? game.slots.find(s => s.id === selectedSlotId) : null;
+        backupListTitle.textContent = game && slot
+            ? `备份记录 — ${game.name} / ${slot.name}`
+            : '备份记录';
 
-        backupList.innerHTML = backups.map(b => {
-            let extraClass = '';
-            let badgeHtml = '';
-            const isCurrentMatch = currentHashes && Object.values(currentHashes).includes(b.content_hash);
-            const isDuplicate = !isCurrentMatch && b.content_hash && hashCounts[b.content_hash] > 1;
+        try {
+            var tIpc = performance.now();
+            const backups = await invoke('list_backups', {
+                gameId: selectedGameId,
+                slotId: selectedSlotId
+            });
+            var ipcMs = +(performance.now() - tIpc).toFixed(2);
 
-            if (isCurrentMatch) {
-                extraClass = ' hash-match';
-                badgeHtml = '<span class="hash-badge match">= 当前</span>';
-            } else if (isDuplicate) {
-                extraClass = ' hash-duplicate';
-                badgeHtml = '<span class="hash-badge duplicate">= 重复</span>';
+            if (backups.length === 0) {
+                backupList.innerHTML = '<div class="empty-hint">暂无备份</div>';
+                window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: 0, ipc: ipcMs });
+                return;
             }
 
-            return `<div class="backup-item${extraClass}">
-                <button class="btn-pin${b.pinned ? ' pinned' : ''}" data-action="toggle-pin" data-folder="${escapeHtml(b.folder_name)}" title="${b.pinned ? '取消置顶' : '置顶'}">&#128204;</button>
-                <span class="name" title="${escapeHtml(b.display_name)}">${escapeHtml(b.display_name)}</span>
-                ${badgeHtml}
-                <span class="original-path" title="${escapeHtml(b.original_file_path)}">${escapeHtml(shortenPath(b.original_file_path))}</span>
-                <button class="btn-small" data-action="restore" data-folder="${escapeHtml(b.folder_name)}">恢复</button>
-                <button class="btn-small" data-action="rename-backup" data-folder="${escapeHtml(b.folder_name)}" data-desc="${escapeHtml(b.description || '')}">重命名</button>
-                <button class="btn-small" data-action="open-backup" data-folder="${escapeHtml(b.folder_name)}">打开</button>
-                <button class="btn-small" data-action="rehash-backup" data-folder="${escapeHtml(b.folder_name)}">重算</button>
-                <button class="btn-danger" data-action="delete-backup" data-folder="${escapeHtml(b.folder_name)}">删除</button>
-            </div>`;
-        }).join('');
+            const currentHashes = currentHashesBySlot[selectedGameId + ':' + selectedSlotId] || {};
+            const hashCounts = {};
+            backups.forEach(b => { if (b.content_hash) hashCounts[b.content_hash] = (hashCounts[b.content_hash] || 0) + 1; });
 
-        window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: backups.length, ipc: ipcMs });
-    } catch (err) {
-        backupList.innerHTML = `<div class="empty-hint">加载失败: ${escapeHtml(String(err))}</div>`;
-        window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), error: String(err) });
+            backupList.innerHTML = backups.map(b => {
+                let extraClass = '';
+                let badgeHtml = '';
+                const isCurrentMatch = currentHashes && Object.values(currentHashes).includes(b.content_hash);
+                const isDuplicate = !isCurrentMatch && b.content_hash && hashCounts[b.content_hash] > 1;
+
+                if (isCurrentMatch) {
+                    extraClass = ' hash-match';
+                    badgeHtml = '<span class="hash-badge match">= 当前</span>';
+                } else if (isDuplicate) {
+                    extraClass = ' hash-duplicate';
+                    badgeHtml = '<span class="hash-badge duplicate">= 重复</span>';
+                }
+
+                return `<div class="backup-item${extraClass}">
+                    <button class="btn-pin${b.pinned ? ' pinned' : ''}" data-action="toggle-pin" data-folder="${escapeHtml(b.folder_name)}" title="${b.pinned ? '取消置顶' : '置顶'}">&#128204;</button>
+                    <span class="name" title="${escapeHtml(b.display_name)}">${escapeHtml(b.display_name)}</span>
+                    ${badgeHtml}
+                    <span class="original-path" title="${escapeHtml(b.original_file_path)}">${escapeHtml(shortenPath(b.original_file_path))}</span>
+                    <button class="btn-small" data-action="restore" data-folder="${escapeHtml(b.folder_name)}">恢复</button>
+                    <button class="btn-small" data-action="rename-backup" data-folder="${escapeHtml(b.folder_name)}" data-desc="${escapeHtml(b.description || '')}">重命名</button>
+                    <button class="btn-small" data-action="open-backup" data-folder="${escapeHtml(b.folder_name)}">打开</button>
+                    <button class="btn-small" data-action="rehash-backup" data-folder="${escapeHtml(b.folder_name)}">重算</button>
+                    <button class="btn-danger" data-action="delete-backup" data-folder="${escapeHtml(b.folder_name)}">删除</button>
+                </div>`;
+            }).join('');
+
+            window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: backups.length, ipc: ipcMs });
+        } catch (err) {
+            backupList.innerHTML = `<div class="empty-hint">加载失败: ${escapeHtml(String(err))}</div>`;
+            window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), error: String(err) });
+        }
+    } finally {
+        _backupListLock = false;
     }
-    _backupListLock = false;
 }
 
 async function handleRestore(folderName) {
