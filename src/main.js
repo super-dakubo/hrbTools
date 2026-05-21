@@ -2214,14 +2214,20 @@ function openTodoEditModal(id) {
                 todo.reminder = null;
             }
             _saveInProgress = true;
+            var settled = false;
             var _saveTimeout = setTimeout(function() {
+                settled = true;
                 _saveInProgress = false;
             }, 5000);
             saveConfigToBackend().then(function() {
+                if (settled) return;
+                settled = true;
                 clearTimeout(_saveTimeout);
                 _saveInProgress = false;
                 syncPendingReminders();
             }).catch(function() {
+                if (settled) return;
+                settled = true;
                 clearTimeout(_saveTimeout);
                 _saveInProgress = false;
             });
