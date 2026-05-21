@@ -31,6 +31,7 @@
   --scrollbar-thumb: rgba(255,255,255,0.08);
   --scrollbar-thumb-hover: rgba(255,255,255,0.14);
   --shadow: rgba(0,0,0,0.5);
+  --holiday-accent: 139, 92, 246;
 
   /* 玻璃拟态 */
   --glass-bg: rgba(255,255,255,0.07);
@@ -79,6 +80,7 @@ body.light {
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --accent-rgb: 59, 130, 246;
+  --holiday-accent: 139, 92, 246;
   --danger-bg: rgba(220,38,38,0.08);
   --danger-text: #dc2626;
   --danger-border: rgba(220,38,38,0.25);
@@ -372,8 +374,8 @@ body.light .win-close:hover .win-ctrl-icon { color: #fff; }
   background: var(--surface);
 }
 .settings-group.holiday {
-  background: rgba(139, 92, 246, 0.04);
-  border-color: rgba(139, 92, 246, 0.12);
+  background: rgba(var(--holiday-accent), 0.04);
+  border-color: rgba(var(--holiday-accent), 0.12);
 }
 .settings-group-header {
   display: flex;
@@ -387,8 +389,8 @@ body.light .win-close:hover .win-ctrl-icon { color: #fff; }
   border-bottom: 1px solid var(--border);
 }
 body.light .settings-group.holiday {
-  background: rgba(139, 92, 246, 0.03);
-  border-color: rgba(139, 92, 246, 0.18);
+  background: rgba(var(--holiday-accent), 0.03);
+  border-color: rgba(var(--holiday-accent), 0.18);
 }
 .settings-group .input-group { margin-bottom: 0; }
 .settings-group .input-group + .input-group { margin-top: 10px; }
