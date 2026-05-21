@@ -1569,9 +1569,17 @@ fn open_log_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
             .map_err(|e| format!("打开日志文件夹失败: {}", e))?;
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
+            .arg(&log_dir)
+            .spawn()
+            .map_err(|e| format!("打开日志文件夹失败: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
             .arg(&log_dir)
             .spawn()
             .map_err(|e| format!("打开日志文件夹失败: {}", e))?;
