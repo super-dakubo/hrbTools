@@ -2214,10 +2214,15 @@ function openTodoEditModal(id) {
                 todo.reminder = null;
             }
             _saveInProgress = true;
+            var _saveTimeout = setTimeout(function() {
+                _saveInProgress = false;
+            }, 5000);
             saveConfigToBackend().then(function() {
+                clearTimeout(_saveTimeout);
                 _saveInProgress = false;
                 syncPendingReminders();
             }).catch(function() {
+                clearTimeout(_saveTimeout);
                 _saveInProgress = false;
             });
             // 编辑弹窗中不渲染列表（关闭时才渲染），避免 DOM 操作卡顿
