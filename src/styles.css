@@ -1799,8 +1799,6 @@ body.light .todo-edit-overlay {
   gap: 16px;
   background: var(--bg);
   transition: opacity 0.3s ease;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 .loading-overlay.hidden {
   opacity: 0;
