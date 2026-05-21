@@ -971,7 +971,7 @@ function showRestoreFileModal(files, folderName) {
                 + files.map((f, i) => '<label class="restore-file-item">'
                     + '<input type="checkbox" data-file="' + escapeHtml(f.name) + '" checked>'
                     + '<span class="restore-file-name">' + escapeHtml(f.name) + '</span>'
-                    + '<span class="restore-file-path">' + escapeHtml(shortenPath(f.path)) + '</span>'
+                    + '<span class="restore-file-path">' + escapeHtml(shortenPath(f.original_path)) + '</span>'
                 + '</label>').join('')
             + '</div>'
             + '<div style="margin-top:12px;display:flex;gap:8px;">'
