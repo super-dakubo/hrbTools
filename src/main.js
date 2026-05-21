@@ -56,6 +56,7 @@ let _lastTabClick = 0;
 let _lastGameTabClick = 0;
 let _lastSlotTabClick = 0;
 let _refreshLock = false;
+let _backupListLock = false;
 const TAB_DEBOUNCE_MS = 300;
 
 function renderTabBar() {
@@ -811,10 +812,16 @@ saveBackupBtn.addEventListener('click', async () => {
 // ==================== 备份列表 ====================
 
 async function refreshBackupList() {
+    if (_backupListLock) {
+        window.__log.perf('Backup', '阻断: refreshBackupList 锁占用中');
+        return;
+    }
+    _backupListLock = true;
     var t0 = performance.now();
     if (!selectedGameId || !selectedSlotId) {
         backupList.innerHTML = '<div class="empty-hint">请先选择游戏和存档位</div>';
         backupListTitle.textContent = '备份记录';
+        _backupListLock = false;
         return;
     }
 
@@ -835,6 +842,7 @@ async function refreshBackupList() {
         if (backups.length === 0) {
             backupList.innerHTML = '<div class="empty-hint">暂无备份</div>';
             window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: 0, ipc: ipcMs });
+            _backupListLock = false;
             return;
         }
 
@@ -874,6 +882,7 @@ async function refreshBackupList() {
         backupList.innerHTML = `<div class="empty-hint">加载失败: ${escapeHtml(String(err))}</div>`;
         window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), error: String(err) });
     }
+    _backupListLock = false;
 }
 
 async function handleRestore(folderName) {
