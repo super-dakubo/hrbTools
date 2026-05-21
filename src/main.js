@@ -150,32 +150,7 @@ document.addEventListener('mouseup', function(e) {
 });
 
 function bindTabEvents() {
-    var tabBar = document.getElementById('tabBar');
-
-    // 事件委托：mousedown 记录拖拽目标
-    tabBar.addEventListener('mousedown', function(e) {
-        var tab = e.target.closest('.tab');
-        if (!tab || e.button !== 0) return;
-        var allTabs = tabBar.querySelectorAll('.tab');
-        var idx = Array.from(allTabs).indexOf(tab);
-        tabDragState = { tab: tab, idx: idx, startY: e.clientY };
-    });
-
-    // 事件委托：click 切换 Tab（带防抖）
-    tabBar.addEventListener('click', function(e) {
-        var tab = e.target.closest('.tab');
-        if (!tab || tabWasDragged) return;
-        var tabId = tab.dataset.tab;
-        if (tabId !== currentTab) {
-            var clickTime = Date.now();
-            if (clickTime - _lastTabClick < TAB_DEBOUNCE_MS) {
-                window.__log.perf('TabSwitch', '防抖忽略切到' + tabId, { interval: clickTime - _lastTabClick });
-                return;
-            }
-            _lastTabClick = clickTime;
-            switchTab(tabId);
-        }
-    });
+    // 已迁移至 setupEventDelegation，此函数保留为空
 }
 
 function switchTab(tabId) {
@@ -2392,6 +2367,32 @@ document.addEventListener('DOMContentLoaded', async function() {
 // ==================== 事件委托（一次性设置，替代每次渲染后重新绑定） ====================
 
 function setupEventDelegation() {
+
+    // ─── Tab 栏（事件从 bindTabEvents 迁移至此，一次性绑定）───
+    var tabBar = document.getElementById('tabBar');
+
+    tabBar.addEventListener('mousedown', function(e) {
+        var tab = e.target.closest('.tab');
+        if (!tab || e.button !== 0) return;
+        var allTabs = tabBar.querySelectorAll('.tab');
+        var idx = Array.from(allTabs).indexOf(tab);
+        tabDragState = { tab: tab, idx: idx, startY: e.clientY };
+    });
+
+    tabBar.addEventListener('click', function(e) {
+        var tab = e.target.closest('.tab');
+        if (!tab || tabWasDragged) return;
+        var tabId = tab.dataset.tab;
+        if (tabId !== currentTab) {
+            var clickTime = Date.now();
+            if (clickTime - _lastTabClick < TAB_DEBOUNCE_MS) {
+                window.__log.perf('TabSwitch', '防抖忽略切到' + tabId, { interval: clickTime - _lastTabClick });
+                return;
+            }
+            _lastTabClick = clickTime;
+            switchTab(tabId);
+        }
+    });
 
     // ─── 游戏标签 ───
     gameTabs.addEventListener('click', async function(e) {
