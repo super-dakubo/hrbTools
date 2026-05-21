@@ -1529,6 +1529,7 @@ function getReminderDisplay(todo) {
 
     // 已过期（含刚好到期），返回已过期
     if (diffMs <= 0) {
+        if (todo.repeat) return ''; // 周期任务由 recalculateNextDue 推进，不显示过期
         return '<span class="todo-reminder overdue">⏰ 已过期</span>';
     }
 
@@ -1573,6 +1574,14 @@ function autoClearExpiredPaused() {
 function renderTodos() {
     var t0 = performance.now();
     if (autoClearExpiredPaused()) saveConfigToBackend();
+
+    // 推进周期任务的过期提醒到下一周期
+    (currentConfig.todos || []).forEach(function(t) {
+        if (t.done || !t.repeat || !t.reminder || !t.reminder.datetime) return;
+        if (new Date(t.reminder.datetime) > new Date()) return;
+        recalculateNextDue(t);
+    });
+
     const items = currentConfig.todos || [];
     const keyword = (todoSearch.value || '').toLowerCase();
     const statusFilter = todoFilterStatus.value;
@@ -1719,34 +1728,45 @@ function createNextRepeat(todo) {
 }
 
 function recalculateNextDue(todo) {
-    if (!todo.due_date) return;
-    var due = new Date(todo.due_date);
-    var now = new Date();
-    // 仅当到期日已过期时重置到下一周期
-    if (due <= now) {
-        var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        if (todo.repeat === 'daily') next.setDate(next.getDate() + 1);
-        else if (todo.repeat === 'weekly') next.setDate(next.getDate() + 7);
-        else if (todo.repeat === 'monthly') next = safeAddMonth(next);
-        todo.due_date = next.toISOString().slice(0, 10);
-        if (todo.reminder && todo.reminder.datetime) {
+    // 推进 due_date（如果存在且已过期）
+    if (todo.due_date && todo.repeat) {
+        var due = new Date(todo.due_date);
+        var now = new Date();
+        if (due <= now) {
+            var next = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (todo.repeat === 'daily') next.setDate(next.getDate() + 1);
+            else if (todo.repeat === 'weekly') next.setDate(next.getDate() + 7);
+            else if (todo.repeat === 'monthly') next = safeAddMonth(next);
+            todo.due_date = next.toISOString().slice(0, 10);
+        }
+    }
+
+    // 推进 reminder.datetime（如果存在、已过期、且是周期任务）
+    if (todo.reminder && todo.reminder.datetime && todo.repeat) {
+        var r = new Date(todo.reminder.datetime);
+        if (r <= new Date()) {
             if (todo.repeat === 'daily') {
                 var next = calculateNextReminderDate('daily',
                     todo.reminder.workday_time,
                     todo.reminder.restday_time);
                 if (next) todo.reminder.datetime = next;
             } else if (todo.repeat === 'weekly') {
-                var r = new Date(todo.reminder.datetime);
-                r.setDate(r.getDate() + 7);
-                todo.reminder.datetime = r.toISOString().slice(0, 16);
+                var maxWeeks = 52;
+                while (r <= new Date() && maxWeeks > 0) {
+                    r.setDate(r.getDate() + 7);
+                    maxWeeks--;
+                }
+                if (maxWeeks > 0) todo.reminder.datetime = r.toISOString().slice(0, 16);
             } else if (todo.repeat === 'monthly') {
-                var r = new Date(todo.reminder.datetime);
-                r = safeAddMonth(r);
-                todo.reminder.datetime = r.toISOString().slice(0, 16);
+                var maxMonths = 12;
+                while (r <= new Date() && maxMonths > 0) {
+                    r = safeAddMonth(r);
+                    maxMonths--;
+                }
+                if (maxMonths > 0) todo.reminder.datetime = r.toISOString().slice(0, 16);
             }
         }
     }
-    // 到期日未过期 → 不动
 }
 
 // 添加待办按钮
