@@ -477,6 +477,13 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+
+    // 备份旧配置：写新配置前将已有 config.json 备份为 config.json.bak
+    if path.exists() {
+        let bak_path = path.with_extension("json.bak");
+        let _ = fs::copy(&path, &bak_path);
+    }
+
     if let Ok(json) = serde_json::to_string_pretty(config) {
         // 原子写入：先写临时文件再 rename，防止崩溃时 config.json 损坏
         let tmp_path = path.with_extension("tmp");
