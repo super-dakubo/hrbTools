@@ -358,12 +358,15 @@ timezoneSets.addEventListener('click', async (e) => {
         renderTimezoneSets();
         restoreTimezoneValues(saved);
     } else if (action === 'reset-tz') {
+        btn.disabled = true;
         tsInput.value = getCurrentTimestampMs();
         try {
             const response = await invoke('convert_to_datetime', { request: { timestamp_ms: parseInt(tsInput.value, 10), timezone: set.timezone } });
             if (response.success) dtInput.value = formatDatetimeStr(response.datetime_str, set.datetime_format);
         } catch (err) { /* ignore */ }
+        btn.disabled = false;
     } else if (action === 'delete-tz') {
+        btn.disabled = true;
         const saved = saveTimezoneValues();
         await invoke('remove_timezone_set', { setId });
         currentConfig = await invoke('get_config');
@@ -372,17 +375,20 @@ timezoneSets.addEventListener('click', async (e) => {
     } else if (action === 'to-ts') {
         const dtStr = dtInput.value.trim();
         if (!dtStr) return;
+        btn.disabled = true;
         try {
             const response = await invoke('convert_to_timestamp', { request: { datetime_str: dtStr, timezone: set.timezone } });
             tsInput.value = response.success ? String(response.timestamp) : 'error';
         } catch (err) {
             tsInput.value = 'error';
         }
+        btn.disabled = false;
     } else if (action === 'to-dt') {
         const tsStr = tsInput.value.trim();
         if (!tsStr) return;
         const ts = parseInt(tsStr, 10);
         if (isNaN(ts)) return;
+        btn.disabled = true;
         try {
             const response = await invoke('convert_to_datetime', { request: { timestamp_ms: ts, timezone: set.timezone } });
             if (response.success) {
@@ -393,6 +399,7 @@ timezoneSets.addEventListener('click', async (e) => {
         } catch (err) {
             dtInput.value = 'error';
         }
+        btn.disabled = false;
     } else if (action === 'copy-dt') {
         const val = dtInput.value.trim();
         if (!val) return;
