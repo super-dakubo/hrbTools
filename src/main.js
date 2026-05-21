@@ -919,6 +919,7 @@ async function handleRestore(folderName) {
                 });
                 if (!backupResult.success) {
                     alert('备份当前文件失败: ' + backupResult.message);
+                    return;
                 }
                 await doRestoreWithFileSelect(folderName);
             } else {
