@@ -1944,3 +1944,177 @@ body.light .todo-edit-overlay {
   color: var(--text-secondary);
   cursor: pointer;
 }
+
+/* ==================== 截图面板 ==================== */
+
+/* --- Toolbar --- */
+.ss-toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 16px; flex-wrap: wrap;
+}
+.ss-toolbar select {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 30px 6px 12px; font-size: 13px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    cursor: pointer; min-width: 180px;
+}
+.ss-toolbar select:focus { outline: none; border-color: var(--accent); }
+.ss-toolbar input[type="search"] {
+    background: var(--input-bg, var(--surface)); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; font-size: 13px; flex: 1; min-width: 120px;
+}
+.ss-toolbar input[type="search"]:focus { outline: none; border-color: var(--accent); }
+.ss-toolbar input[type="search"]::placeholder { color: var(--text-secondary); }
+
+/* --- Pagination --- */
+.ss-pagination {
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);
+}
+.ss-pagination .btn-small { padding: 4px 12px; font-size: 12px; }
+
+/* --- Grid --- */
+.ss-grid-container { flex: 1; overflow-y: auto; margin: 0 -4px; padding: 4px; }
+.ss-grid-container::-webkit-scrollbar { width: 6px; }
+.ss-grid-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.ss-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+/* --- Card --- */
+.ss-card {
+    background: var(--surface); border-radius: 10px; overflow: hidden;
+    cursor: pointer; position: relative;
+    border: 1px solid var(--border); transition: transform 0.15s, box-shadow 0.15s;
+}
+.ss-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.ss-card .ss-thumb {
+    width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
+    background: var(--bg);
+}
+.ss-card .ss-thumb-placeholder {
+    width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: center;
+    justify-content: center; font-size: 32px; color: #444;
+    background: var(--bg);
+}
+.ss-card .ss-info {
+    padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
+}
+.ss-card .ss-info .ss-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ss-card .ss-info .ss-date { font-size: 10px; color: var(--text-secondary); white-space: nowrap; margin-left: 8px; }
+.ss-card .ss-game-tag {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(75,139,244,0.85); color: #fff;
+    font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600;
+}
+.ss-card .ss-hover-actions {
+    position: absolute; top: 6px; right: 6px; display: none; gap: 4px;
+}
+.ss-card:hover .ss-hover-actions { display: flex; }
+.ss-card .ss-hover-actions button {
+    width: 28px; height: 28px; border: none; border-radius: 6px;
+    cursor: pointer; background: rgba(0,0,0,0.6); color: #fff;
+    font-size: 13px; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s; backdrop-filter: blur(4px);
+}
+.ss-card .ss-hover-actions button.ss-del:hover { background: #e81123; }
+.ss-card .ss-hover-actions button.ss-folder:hover { background: var(--accent); }
+
+/* --- Skeleton --- */
+@keyframes ss-shimmer {
+    0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; }
+}
+.ss-skeleton { animation: ss-shimmer 1.5s ease-in-out infinite; pointer-events: none; }
+.ss-skeleton .ss-thumb-placeholder { background: var(--surface); }
+.ss-skeleton .ss-info { height: 36px; background: var(--surface); }
+
+/* --- Lightbox --- */
+.ss-lightbox {
+    display: none; position: fixed; z-index: 1000;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+    justify-content: center; align-items: center;
+    opacity: 0; transition: opacity 0.2s ease;
+}
+.ss-lightbox.open { display: flex; opacity: 1; }
+.ss-lightbox .ss-lb-close {
+    position: absolute; top: 20px; right: 24px;
+    width: 36px; height: 36px; border: none; border-radius: 8px;
+    background: rgba(255,255,255,0.1); color: #fff; font-size: 20px;
+    cursor: pointer; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+}
+.ss-lightbox .ss-lb-close:hover { background: rgba(255,255,255,0.2); }
+.ss-lightbox .ss-lb-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 44px; height: 44px; border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.1); color: #fff; font-size: 20px;
+    cursor: pointer; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+}
+.ss-lightbox .ss-lb-nav:hover { background: rgba(255,255,255,0.2); }
+.ss-lightbox .ss-lb-prev { left: 20px; }
+.ss-lightbox .ss-lb-next { right: 20px; }
+.ss-lightbox .ss-lb-image {
+    max-width: 85vw; max-height: 85vh; border-radius: 8px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); object-fit: contain;
+}
+.ss-lightbox .ss-lb-footer {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.7); font-size: 13px;
+    background: rgba(0,0,0,0.5); padding: 6px 16px; border-radius: 20px;
+    backdrop-filter: blur(4px);
+}
+
+/* --- Add Source Dialog --- */
+.ss-add-dialog {
+    display: none; position: fixed; z-index: 999;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); justify-content: center; align-items: center;
+}
+.ss-add-dialog.open { display: flex; }
+.ss-add-dialog .ss-dialog-box {
+    background: var(--surface); border-radius: 14px;
+    padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto;
+    border: 1px solid var(--border);
+}
+.ss-add-dialog .ss-dialog-box h3 { font-size: 16px; margin-bottom: 16px; }
+.ss-add-dialog .ss-dialog-section {
+    margin-bottom: 16px; padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+.ss-add-dialog .ss-dialog-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.ss-add-dialog .ss-detected-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    transition: background 0.15s;
+}
+.ss-add-dialog .ss-detected-item:hover { background: rgba(255,255,255,0.05); }
+.ss-add-dialog .ss-detected-item input[type="checkbox"] { accent-color: var(--accent); }
+.ss-add-dialog .ss-detected-item .ss-count {
+    margin-left: auto; font-size: 12px; color: var(--text-secondary);
+}
+
+/* --- Empty State --- */
+.ss-empty {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--text-secondary); gap: 12px; padding: 60px 20px;
+}
+.ss-empty .ss-empty-icon { font-size: 48px; opacity: 0.4; }
+.ss-empty p { font-size: 14px; text-align: center; }
+.ss-empty .ss-empty-sub { font-size: 12px; opacity: 0.6; }
+
+/* --- Stats Header --- */
+.ss-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+}
+.ss-header h2 { font-size: 18px; font-weight: 600; }
+.ss-header .ss-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
