@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>截图面板 Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e8e8f0;
+    display: flex;
+    justify-content: center;
+    padding: 30px;
+    min-height: 100vh;
+  }
+  .app-window {
+    width: 960px;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  /* Title bar */
+  .titlebar {
+    height: 38px;
+    background: #16162a;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    user-select: none;
+  }
+  .titlebar .app-icon { width: 18px; height: 18px; background: linear-gradient(135deg,#4b8bf4,#2563eb); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; margin-right: 10px; }
+  .titlebar .title { font-size: 13px; color: #aaa; flex: 1; }
+  .titlebar .win-ctrl { width: 32px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px; margin-left: 4px; font-size: 14px; color: #888; }
+  .titlebar .win-ctrl:hover { background: rgba(255,255,255,0.08); }
+  .titlebar .win-close:hover { background: #e81123; color: #fff; }
+  /* Body */
+  .body { display: flex; height: 680px; }
+  /* Tab bar */
+  .tabbar {
+    width: 60px;
+    background: #16162a;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    gap: 4px;
+  }
+  .tab-item {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 10px;
+    cursor: pointer;
+    color: #666;
+    font-size: 11px;
+    position: relative;
+    transition: all 0.15s;
+  }
+  .tab-item:hover { background: rgba(255,255,255,0.06); color: #999; }
+  .tab-item.active { background: rgba(75,139,244,0.15); color: #4b8bf4; }
+  .tab-item .icon { font-size: 20px; line-height: 1; }
+  .tab-item .label { font-size: 9px; margin-top: 2px; }
+  .tab-item .badge {
+    position: absolute; top: 2px; right: 2px;
+    width: 16px; height: 16px;
+    background: #4b8bf4; border-radius: 50%;
+    color: #fff; font-size: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  /* Main panel */
+  .panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    overflow: hidden;
+    background: #1a1a2e;
+  }
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .panel-header h2 { font-size: 18px; font-weight: 600; }
+  .panel-header .subtitle { font-size: 12px; color: #888; margin-top: 2px; }
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .toolbar select {
+    background: #222244;
+    color: #e8e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 6px 30px 6px 12px;
+    font-size: 13px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    cursor: pointer;
+    min-width: 200px;
+  }
+  .toolbar select:focus { outline: none; border-color: #4b8bf4; }
+  .toolbar input[type="search"] {
+    background: #222244;
+    color: #e8e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    flex: 1;
+    min-width: 120px;
+  }
+  .toolbar input[type="search"]:focus { outline: none; border-color: #4b8bf4; }
+  .toolbar input[type="search"]::placeholder { color: #666; }
+  .btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: #4b8bf4; color: #fff; }
+  .btn-primary:hover { background: #3a7ae0; }
+  .btn-ghost { background: rgba(255,255,255,0.06); color: #aaa; }
+  .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #e8e8f0; }
+  /* Grid */
+  .grid-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 0 -4px;
+    padding: 4px;
+  }
+  .grid-container::-webkit-scrollbar { width: 6px; }
+  .grid-container::-webkit-scrollbar-track { background: transparent; }
+  .grid-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .card {
+    background: #222244;
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .card .thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: #1a1a2e;
+  }
+  .card .thumb-placeholder {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: #444;
+  }
+  .card .info {
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card .info .name { font-size: 11px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .card .info .date { font-size: 10px; color: #666; white-space: nowrap; margin-left: 8px; }
+  .card .game-tag {
+    position: absolute;
+    top: 6px; left: 6px;
+    background: rgba(75,139,244,0.85);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .card .hover-actions {
+    position: absolute;
+    top: 6px; right: 6px;
+    display: none;
+    gap: 4px;
+  }
+  .card:hover .hover-actions { display: flex; }
+  .card .hover-actions button {
+    width: 28px; height: 28px;
+    border: none; border-radius: 6px;
+    cursor: pointer;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+    backdrop-filter: blur(4px);
+  }
+  .card .hover-actions button.del:hover { background: #e81123; }
+  .card .hover-actions button.folder:hover { background: #4b8bf4; }
+  /* Lightbox overlay */
+  .lightbox {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(8px);
+  }
+  .lightbox.open { display: flex; }
+  .lightbox .close-btn {
+    position: absolute;
+    top: 20px; right: 24px;
+    width: 36px; height: 36px;
+    border: none; border-radius: 8px;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    z-index: 10;
+  }
+  .lightbox .close-btn:hover { background: rgba(255,255,255,0.2); }
+  .lightbox .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px; height: 44px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    z-index: 10;
+  }
+  .lightbox .nav-btn:hover { background: rgba(255,255,255,0.2); }
+  .lightbox .nav-btn.prev { left: 20px; }
+  .lightbox .nav-btn.next { right: 20px; }
+  .lightbox .lb-image {
+    max-width: 85vw;
+    max-height: 85vh;
+    border-radius: 8px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    object-fit: contain;
+  }
+  .lightbox .lb-footer {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(4px);
+  }
+  /* Empty state */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    gap: 12px;
+  }
+  .empty-state .big-icon { font-size: 56px; opacity: 0.3; }
+  .empty-state p { font-size: 14px; }
+  /* Animated placeholder for demo */
+  @keyframes shimmer {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+  }
+  .demo-shimmer {
+    animation: shimmer 2s ease-in-out infinite;
+  }
+  /* Colorful thumbnails as game screenshots stand-ins */
+  .game-thumb {
+    width: 100%;
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: rgba(255,255,255,0.3);
+    font-weight: 700;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+  }
+  .game-thumb .overlay-text {
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  /* Navigation in toolbar */
+  .nav-group {
+    display: flex;
+    gap: 2px;
+    background: #222244;
+    border-radius: 8px;
+    padding: 2px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .nav-group button {
+    width: 28px; height: 26px;
+    border: none; border-radius: 6px;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .nav-group button:hover { background: rgba(255,255,255,0.08); color: #e8e8f0; }
+  /* Responsive grid */
+  @media (max-width: 700px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+    .toolbar select { min-width: 140px; }
+  }
+  @media (max-width: 500px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .demo-hint {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(75,139,244,0.2);
+    border: 1px solid rgba(75,139,244,0.3);
+    color: #4b8bf4;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="app-window">
+  <!-- Title bar -->
+  <div class="titlebar">
+    <div class="app-icon">H</div>
+    <div class="title">hrbTools — 截图面板</div>
+    <div class="win-ctrl" style="margin-left:auto;">─</div>
+    <div class="win-ctrl">□</div>
+    <div class="win-ctrl win-close">✕</div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+    <!-- Tab bar -->
+    <div class="tabbar">
+      <div class="tab-item" title="时间转换"><div><div class="icon">🕐</div><div class="label">时间</div></div></div>
+      <div class="tab-item" title="存档管理"><div><div class="icon">💾</div><div class="label">备份</div></div></div>
+      <div class="tab-item" title="待办"><div><div class="icon">✅</div><div class="label">待办</div></div></div>
+      <div class="tab-item active" title="截图" style="background:rgba(75,139,244,0.15);color:#4b8bf4;">
+        <div><div class="icon">📷</div><div class="label">截图</div>
+        <div class="badge">3</div></div>
+      </div>
+      <div class="tab-item" title="日志"><div><div class="icon">📋</div><div class="label">日志</div></div></div>
+      <div class="tab-item" title="设置" style="margin-top:auto;"><div><div class="icon">⚙</div><div class="label">设置</div></div></div>
+    </div>
+
+    <!-- Main panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>📷 游戏截图</h2>
+          <div class="subtitle">共 12 张截图 · 占用 28.5 MB</div>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <select>
+          <option>🎮 艾尔登法环 — D:/Games/EldenRing/Screenshots</option>
+          <option>🏹 博德之门3 — D:/Games/BG3/Screenshots</option>
+          <option>⚔️ 黑神话：悟空 — D:/Games/Wukong/Screenshots</option>
+          <option>📁 添加新来源...</option>
+        </select>
+        <div class="nav-group">
+          <button title="上一页">‹</button>
+          <button title="下一页">›</button>
+        </div>
+        <input type="search" placeholder="搜索截图文件名..." value="龙">
+        <button class="btn btn-primary">🔍 搜索</button>
+        <button class="btn btn-ghost">🔄 刷新</button>
+      </div>
+
+      <!-- Grid -->
+      <div class="grid-container">
+        <div class="grid">
+          <!-- Card 1 -->
+          <div class="card" onclick="openLightbox(0)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a1a3e,#3a1a5e);">
+              <span class="overlay-text" style="font-size:32px;">🌳</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-22_001.png</span>
+              <span class="date">05-22</span>
+            </div>
+          </div>
+          <!-- Card 2 -->
+          <div class="card" onclick="openLightbox(1)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#2a1a1a,#5e1a1a);">
+              <span class="overlay-text" style="font-size:32px;">🔥</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-22_002.png</span>
+              <span class="date">05-22</span>
+            </div>
+          </div>
+          <!-- Card 3 -->
+          <div class="card" onclick="openLightbox(2)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a2a1a,#1a5e3a);">
+              <span class="overlay-text" style="font-size:32px;">🏰</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-21_015.png</span>
+              <span class="date">05-21</span>
+            </div>
+          </div>
+          <!-- Card 4 -->
+          <div class="card" onclick="openLightbox(3)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#3a3a1a,#5e5e1a);">
+              <span class="overlay-text" style="font-size:32px;">⚔️</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-21_014.png</span>
+              <span class="date">05-21</span>
+            </div>
+          </div>
+          <!-- Card 5 - BG3 -->
+          <div class="card" onclick="openLightbox(4)">
+            <div class="game-tag">🏹 博德之门3</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a2a3a,#3a1a3a);">
+              <span class="overlay-text" style="font-size:32px;">🐉</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">bg3_2026-05-20_001.png</span>
+              <span class="date">05-20</span>
+            </div>
+          </div>
+          <!-- Card 6 -->
+          <div class="card" onclick="openLightbox(5)">
+            <div class="game-tag">🏹 博德之门3</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#2a1a3a,#1a3a4a);">
+              <span class="overlay-text" style="font-size:32px;">🧙</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">bg3_2026-05-20_002.png</span>
+              <span class="date">05-20</span>
+            </div>
+          </div>
+          <!-- Card 7 - 黑神话 -->
+          <div class="card" onclick="openLightbox(6)">
+            <div class="game-tag">⚔️ 黑神话：悟空</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a1a1a,#4a2a1a);">
+              <span class="overlay-text" style="font-size:32px;">🐵</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Wukong_2026-05-19_001.png</span>
+              <span class="date">05-19</span>
+            </div>
+          </div>
+          <!-- Card 8 -->
+          <div class="card" onclick="openLightbox(7)">
+            <div class="game-tag">⚔️ 黑神话：悟空</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#2a3a1a,#1a4a3a);">
+              <span class="overlay-text" style="font-size:32px;">🌄</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Wukong_2026-05-18_003.png</span>
+              <span class="date">05-18</span>
+            </div>
+          </div>
+          <!-- Card 9 -->
+          <div class="card" onclick="openLightbox(8)">
+            <div class="game-tag">⚔️ 黑神话：悟空</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#3a1a2a,#5e2a1a);">
+              <span class="overlay-text" style="font-size:32px;">🗡️</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Wukong_2026-05-17_012.png</span>
+              <span class="date">05-17</span>
+            </div>
+          </div>
+          <!-- Card 10 -->
+          <div class="card" onclick="openLightbox(9)">
+            <div class="game-tag">🏹 博德之门3</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a3a2a,#2a4a3a);">
+              <span class="overlay-text" style="font-size:32px;">🌿</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">bg3_2026-05-16_008.png</span>
+              <span class="date">05-16</span>
+            </div>
+          </div>
+          <!-- Card 11 -->
+          <div class="card" onclick="openLightbox(10)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#2a2a3a,#4a2a4a);">
+              <span class="overlay-text" style="font-size:32px;">🌙</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-15_032.png</span>
+              <span class="date">05-15</span>
+            </div>
+          </div>
+          <!-- Card 12 -->
+          <div class="card" onclick="openLightbox(11)">
+            <div class="game-tag">🎮 艾尔登法环</div>
+            <div class="game-thumb" style="background:linear-gradient(135deg,#1a2a2a,#2a3a3a);">
+              <span class="overlay-text" style="font-size:32px;">🗿</span>
+            </div>
+            <div class="hover-actions">
+              <button class="folder" title="打开文件夹" onclick="event.stopPropagation()">📂</button>
+              <button class="del" title="删除" onclick="event.stopPropagation(); if(confirm('确定删除这张截图？')) this.closest('.card').remove()">🗑</button>
+            </div>
+            <div class="info">
+              <span class="name">Screenshot_2026-05-14_021.png</span>
+              <span class="date">05-14</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="clickOutside(event)">
+  <button class="close-btn" onclick="closeLightbox()">✕</button>
+  <button class="nav-btn prev" onclick="navigate(-1)">‹</button>
+  <button class="nav-btn next" onclick="navigate(1)">›</button>
+  <img class="lb-image" id="lbImage" src="" alt="preview">
+  <div class="lb-footer" id="lbFooter">1 / 12</div>
+  <div class="demo-hint">💡 点击卡片打开预览 · 键盘 ← → 切换 · ESC 关闭</div>
+</div>
+
+<script>
+  let currentIdx = 0;
+  const totalCards = 12;
+  const thumbGradients = [
+    'linear-gradient(135deg,#1a1a3e,#3a1a5e)',
+    'linear-gradient(135deg,#2a1a1a,#5e1a1a)',
+    'linear-gradient(135deg,#1a2a1a,#1a5e3a)',
+    'linear-gradient(135deg,#3a3a1a,#5e5e1a)',
+    'linear-gradient(135deg,#1a2a3a,#3a1a3a)',
+    'linear-gradient(135deg,#2a1a3a,#1a3a4a)',
+    'linear-gradient(135deg,#1a1a1a,#4a2a1a)',
+    'linear-gradient(135deg,#2a3a1a,#1a4a3a)',
+    'linear-gradient(135deg,#3a1a2a,#5e2a1a)',
+    'linear-gradient(135deg,#1a3a2a,#2a4a3a)',
+    'linear-gradient(135deg,#2a2a3a,#4a2a4a)',
+    'linear-gradient(135deg,#1a2a2a,#2a3a3a)'
+  ];
+  const thumbIcons = ['🌳','🔥','🏰','⚔️','🐉','🧙','🐵','🌄','🗡️','🌿','🌙','🗿'];
+  const gameTags = ['🎮 艾尔登法环','🎮 艾尔登法环','🎮 艾尔登法环','🎮 艾尔登法环','🏹 博德之门3','🏹 博德之门3','⚔️ 黑神话：悟空','⚔️ 黑神话：悟空','⚔️ 黑神话：悟空','🏹 博德之门3','🎮 艾尔登法环','🎮 艾尔登法环'];
+
+  function openLightbox(idx) {
+    currentIdx = idx;
+    const img = document.getElementById('lbImage');
+    // Simulate a screenshot-like gradient as preview
+    const grad = thumbGradients[idx];
+    const icon = thumbIcons[idx];
+    const tag = gameTags[idx];
+    // We'll use a data-url SVG to simulate the image
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+      <defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">${grad.replace('linear-gradient(135deg','').replace(')','').split(',').map((c,i) => `<stop offset="${i*50}%" stop-color="${c.trim()}"/>`).join('')}</linearGradient></defs>
+      <rect width="1200" height="675" fill="url(#g)"/>
+      <text x="600" y="337" text-anchor="middle" font-size="120" fill="rgba(255,255,255,0.25)">${icon}</text>
+      <text x="600" y="420" text-anchor="middle" font-size="24" fill="rgba(255,255,255,0.15)">${tag}</text>
+      <text x="600" y="460" text-anchor="middle" font-size="16" fill="rgba(255,255,255,0.1)">Screenshot Preview</text>
+    </svg>`;
+    img.src = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    updateFooter();
+    document.getElementById('lightbox').classList.add('open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+  }
+
+  function navigate(dir) {
+    currentIdx = (currentIdx + dir + totalCards) % totalCards;
+    openLightbox(currentIdx);
+  }
+
+  function updateFooter() {
+    document.getElementById('lbFooter').textContent = `${currentIdx + 1} / ${totalCards} 张`;
+  }
+
+  function clickOutside(e) {
+    if (e.target === e.currentTarget) closeLightbox();
+  }
+
+  document.addEventListener('keydown', function(e) {
+    const lb = document.getElementById('lightbox');
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') navigate(-1);
+    if (e.key === 'ArrowRight') navigate(1);
+  });
+</script>
+</body>
+</html>
