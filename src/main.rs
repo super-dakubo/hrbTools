@@ -213,6 +213,7 @@ struct ScreenshotEntry {
     modified: String,
     size: u64,
     source_id: String,
+    #[serde(default)]
     game_name: Option<String>,
 }
 
@@ -422,6 +423,83 @@ fn sanitize_path_component(name: &str) -> Result<String, OpResult> {
         });
     }
     Ok(name.to_string())
+}
+
+// ==================== 截图画廊 ====================
+
+const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+
+fn is_image_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+async fn scan_screenshots(
+    app: tauri::AppHandle,
+    source_path: String,
+) -> Result<Vec<ScreenshotEntry>, String> {
+    let config = load_config(&app);
+    let resolved_path = std::path::PathBuf::from(&source_path);
+
+    // Security: canonicalize to detect path traversal
+    let canonical = resolved_path.canonicalize().map_err(|_| "路径不存在".to_string())?;
+
+    // Verify that resolved path is under a registered source
+    let is_valid = config.screenshot_sources.iter().any(|s| {
+        std::path::Path::new(&s.path).canonicalize()
+            .map(|p| canonical.starts_with(&p))
+            .unwrap_or(false)
+    });
+    if !is_valid {
+        return Err("未授权的路径".to_string());
+    }
+
+    // Run blocking I/O on thread pool
+    let entries = tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::new();
+        let mut dirs: Vec<std::path::PathBuf> = vec![canonical.clone()];
+        let mut visited = std::collections::HashSet::new();
+
+        while let Some(dir) = dirs.pop() {
+            if results.len() >= 50 { break; }
+            if !visited.insert(dir.clone()) { continue; }
+
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() && dirs.len() < 3 {
+                        dirs.push(path);
+                    } else if path.is_file() && is_image_file(&path) && results.len() < 50 {
+                        if let Ok(meta) = path.metadata() {
+                            if let Ok(modified) = meta.modified() {
+                                let datetime: chrono::DateTime<chrono::Local> = modified.into();
+                                results.push(ScreenshotEntry {
+                                    file_name: path.file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("")
+                                        .to_string(),
+                                    path: path.to_string_lossy().to_string(),
+                                    modified: datetime.format("%Y-%m-%d %H:%M").to_string(),
+                                    size: meta.len(),
+                                    source_id: String::new(),
+                                    game_name: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        results.sort_by(|a, b| b.modified.cmp(&a.modified));
+        results.truncate(50);
+        results
+    }).await.map_err(|e| e.to_string())?;
+
+    Ok(entries)
 }
 
 // ==================== 配置持久化 ====================
@@ -1940,6 +2018,7 @@ fn main() {
             log_write,
             open_log_folder,
             read_today_logs,
+            scan_screenshots,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
