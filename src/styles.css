@@ -339,7 +339,8 @@ body.light .win-close:hover .win-ctrl-icon { color: #fff; }
 }
 
 #panel-todo.active .panel-inner,
-#panel-log .panel-inner {
+#panel-log .panel-inner,
+#panel-screenshot.active .panel-inner {
   display: flex;
   flex-direction: column;
   height: 100%;

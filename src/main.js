@@ -2618,11 +2618,14 @@ function openLightbox(index) {
         lb = document.createElement('div');
         lb.id = 'ssLightbox';
         lb.className = 'ss-lightbox';
-        lb.innerHTML = '<button class="ss-lb-close" data-action="ss-lb-close">✕</button>'
-            + '<button class="ss-lb-nav ss-lb-prev" data-action="ss-lb-prev">‹</button>'
-            + '<button class="ss-lb-nav ss-lb-next" data-action="ss-lb-next">›</button>'
+        lb.innerHTML = '<button class="ss-lb-close">✕</button>'
+            + '<button class="ss-lb-nav ss-lb-prev">‹</button>'
+            + '<button class="ss-lb-nav ss-lb-next">›</button>'
             + '<img class="ss-lb-image" id="ssLbImg" alt="">'
             + '<div class="ss-lb-footer" id="ssLbFooter"></div>';
+        lb.querySelector('.ss-lb-close').addEventListener('click', closeLightbox);
+        lb.querySelector('.ss-lb-prev').addEventListener('click', function() { navigateLightbox(-1); });
+        lb.querySelector('.ss-lb-next').addEventListener('click', function() { navigateLightbox(1); });
         lb.addEventListener('click', function(e) {
             if (e.target === lb) closeLightbox();
         });
@@ -2677,15 +2680,35 @@ function openAddSourceDialog() {
         + '<h3>添加截图来源</h3>'
         + '<div class="ss-dialog-section">'
         + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">自定义文件夹</p>'
-        + '<button class="btn btn-primary" data-action="ss-pick-folder">📁 浏览...</button>'
+        + '<button class="btn btn-primary" id="ssBrowseFolderBtn">📁 浏览...</button>'
         + '</div>'
         + '<div class="ss-dialog-section" id="ssDetectedSection">'
         + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">快速添加 — 正在检测...</p>'
         + '</div>'
         + '<div style="text-align:right">'
-        + '<button class="btn btn-ghost" data-action="ss-close-dialog">取消</button>'
+        + '<button class="btn btn-ghost" id="ssCancelDialogBtn">取消</button>'
         + '</div>'
         + '</div>';
+
+    dialog.querySelector('#ssBrowseFolderBtn').addEventListener('click', function() {
+        invoke('pick_directory').then(function(dir) {
+            if (dir) {
+                var name = dir.split(/[/\\]/).pop() || '截图';
+                invoke('add_screenshot_source', { name: name, path: dir, gameId: null }).then(function(res) {
+                    if (res.success) {
+                        refreshScreenshotConfig();
+                        dialog.classList.remove('open');
+                    } else {
+                        alert('添加失败: ' + res.message);
+                    }
+                });
+            }
+        });
+    });
+
+    dialog.querySelector('#ssCancelDialogBtn').addEventListener('click', function() {
+        dialog.classList.remove('open');
+    });
 
     dialog.addEventListener('click', function(e) {
         if (e.target === dialog) dialog.classList.remove('open');
@@ -2705,7 +2728,7 @@ function openAddSourceDialog() {
         var html = '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">检测到以下来源：</p>';
         sources.forEach(function(s, i) {
             html += '<label class="ss-detected-item">'
-                + '<input type="checkbox" data-action="ss-toggle-detected" data-index="' + i + '" checked>'
+                + '<input type="checkbox" class="ss-source-checkbox" data-index="' + i + '" checked>'
                 + '<span>' + escapeHtml(s.name) + '</span>'
                 + '<span class="ss-count">' + s.count + ' 张</span>'
                 + '</label>';
@@ -2713,8 +2736,13 @@ function openAddSourceDialog() {
 
         window._ssDetectedSources = sources;
 
-        html += '<div style="margin-top:12px"><button class="btn btn-primary" data-action="ss-add-detected">添加所选</button></div>';
+        html += '<div style="margin-top:12px"><button class="btn btn-primary" id="ssAddDetectedBtn">添加所选</button></div>';
         section.innerHTML = html;
+
+        var addBtn = document.getElementById('ssAddDetectedBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', function() { addDetectedSources(dialog); });
+        }
     }).catch(function() {
         var section = document.getElementById('ssDetectedSection');
         if (section) {
@@ -2728,24 +2756,23 @@ function closeAddDialog() {
     if (dialog) dialog.classList.remove('open');
 }
 
-function addDetectedSources() {
+function addDetectedSources(dialog) {
     var sources = window._ssDetectedSources || [];
-    var checks = document.querySelectorAll('#ssAddDialog input[data-action="ss-toggle-detected"]:checked');
-    var pending = 0;
+    var checks = dialog.querySelectorAll('.ss-source-checkbox:checked');
+    var promises = [];
 
     checks.forEach(function(cb) {
         var idx = parseInt(cb.dataset.index);
         var src = sources[idx];
         if (!src) return;
-        pending++;
-        invoke('add_screenshot_source', { name: src.name, path: src.path, gameId: null });
+        promises.push(invoke('add_screenshot_source', { name: src.name, path: src.path, gameId: null }));
     });
 
-    if (pending > 0) {
-        setTimeout(function() {
+    if (promises.length > 0) {
+        Promise.all(promises).then(function() {
             refreshScreenshotConfig();
-            closeAddDialog();
-        }, 500);
+            dialog.classList.remove('open');
+        });
     }
 }
 
