@@ -184,9 +184,45 @@ struct AppConfig {
     #[serde(default)]
     holiday_data: Vec<HolidayYearConfig>,
     #[serde(default)]
+    screenshot_sources: Vec<ScreenshotSource>,
+    #[serde(default)]
     banners: Vec<BannerEntry>,
     #[serde(default)]
     pending_reminders: Vec<PendingReminder>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScreenshotSource {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    game_id: Option<String>,
+    #[serde(default)]
+    sort_order: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+struct ScreenshotEntry {
+    file_name: String,
+    path: String,
+    modified: String,
+    size: u64,
+    source_id: String,
+    game_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+struct DetectedSource {
+    name: String,
+    path: String,
+    count: u32,
+    source_type: String,
 }
 
 fn default_theme() -> String { "system".to_string() }
@@ -194,7 +230,7 @@ fn default_theme() -> String { "system".to_string() }
 fn default_true() -> bool { true }
 
 fn default_tab_order() -> Vec<String> {
-    vec!["convert".to_string(), "backup".to_string(), "todo".to_string(), "log".to_string()]
+    vec!["convert".to_string(), "backup".to_string(), "todo".to_string(), "screenshot".to_string(), "log".to_string()]
 }
 
 impl Default for AppConfig {
@@ -210,6 +246,7 @@ impl Default for AppConfig {
             minimize_to_tray: true,
             reminder_enabled: true,
             holiday_data: vec![],
+            screenshot_sources: vec![],
             banners: vec![],
             pending_reminders: vec![],
         }
