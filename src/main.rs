@@ -925,6 +925,83 @@ async fn detect_screenshot_sources(_app: tauri::AppHandle) -> Result<Vec<Detecte
     Ok(sources)
 }
 
+// ---- UUID v4 Helper ----
+
+fn uuid_v4() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let n = now.as_nanos();
+    format!(
+        "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
+        (n >> 80) as u32,
+        (n >> 64) as u16,
+        (n >> 52) as u16 & 0xfff,
+        0x4000 | ((n >> 48) as u16 & 0x3fff),
+        n as u64 & 0xffffffffffff
+    )
+}
+
+// ---- Screenshot CRUD Commands ----
+
+#[tauri::command]
+fn add_screenshot_source(
+    app: tauri::AppHandle,
+    name: String,
+    path: String,
+    game_id: Option<String>,
+) -> OpResult {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return OpResult { success: false, message: "路径不存在".to_string() };
+    }
+    if !p.is_dir() {
+        return OpResult { success: false, message: "路径不是文件夹".to_string() };
+    }
+
+    let mut config = load_config(&app);
+    let new_source = ScreenshotSource {
+        id: uuid_v4(),
+        name,
+        path,
+        game_id,
+        sort_order: config.screenshot_sources.len() as i32,
+    };
+    config.screenshot_sources.push(new_source);
+    save_config(&app, &config);
+    OpResult { success: true, message: "截图来源已添加".to_string() }
+}
+
+#[tauri::command]
+fn remove_screenshot_source(
+    app: tauri::AppHandle,
+    id: String,
+) -> OpResult {
+    let mut config = load_config(&app);
+    let len_before = config.screenshot_sources.len();
+    config.screenshot_sources.retain(|s| s.id != id);
+    if config.screenshot_sources.len() == len_before {
+        return OpResult { success: false, message: "未找到该来源".to_string() };
+    }
+    save_config(&app, &config);
+    OpResult { success: true, message: "截图来源已移除".to_string() }
+}
+
+#[tauri::command]
+fn delete_screenshot(
+    path: String,
+) -> OpResult {
+    let p = std::path::Path::new(&path);
+    let canonical = match p.canonicalize() {
+        Ok(c) => c,
+        Err(_) => return OpResult { success: false, message: "文件不存在".to_string() },
+    };
+    match std::fs::remove_file(&canonical) {
+        Ok(_) => OpResult { success: true, message: "截图已删除".to_string() },
+        Err(e) => OpResult { success: false, message: format!("删除失败: {}", e) },
+    }
+}
+
 // ==================== 配置持久化 ====================
 
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
@@ -2444,6 +2521,9 @@ fn main() {
             scan_screenshots,
             get_screenshot_base64_batch,
             detect_screenshot_sources,
+            add_screenshot_source,
+            remove_screenshot_source,
+            delete_screenshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
