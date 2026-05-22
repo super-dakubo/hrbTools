@@ -9,6 +9,16 @@ let currentHashesBySlot = {};  // { "gameId:slotId": { "save.dat": "abc", "confi
 let _isSettingsActive = false;
 let _previousTab = 'convert';
 
+// Screenshot state
+let _ssSources = [];           // ScreenshotSource[]
+let _ssCurrentSourceId = '';   // Currently selected source ID
+let _ssEntries = [];           // ScreenshotEntry[] for current source
+let _ssPage = 0;               // Current page (0-indexed)
+let _ssPageSize = 20;          // Items per page
+let _ssCache = {};             // sourceId -> { entries, fetchedAt }
+let _ssSearchQuery = '';       // Current search filter
+let _ssSearchTimer = null;     // Debounce timer
+
 // ==================== DOM 引用 ====================
 
 // 时间转换
@@ -165,6 +175,10 @@ function switchTab(tabId) {
     }
     _switchLock = true;
 
+    // Close screenshot lightbox on tab switch
+    var ssLb = document.getElementById('ssLightbox');
+    if (ssLb) ssLb.classList.remove('open');
+
     // 如果当前在设置模式且切换到常规面板，先退出设置
     if (_isSettingsActive && tabId !== 'settings') {
         _isSettingsActive = false;
@@ -184,6 +198,7 @@ function switchTab(tabId) {
 
     if (tabId === 'backup') { refreshAll(); }
     else if (tabId === 'todo') { renderTodos(); }
+    else if (tabId === 'screenshot') { renderScreenshotPanel(); }
     else if (tabId === 'log') { renderLogPanel(); }
 
     var t2 = performance.now();
@@ -2419,6 +2434,176 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     });
 });
+
+// ==================== 截图面板 ====================
+
+function renderScreenshotPanel() {
+    var wrapper = document.getElementById('screenshotApp');
+    if (!wrapper) return;
+
+    if (currentConfig.screenshot_sources) {
+        _ssSources = currentConfig.screenshot_sources;
+    }
+
+    // No sources → empty state
+    if (!_ssSources.length) {
+        wrapper.innerHTML =
+            '<div class="ss-empty">'
+            + '<div class="ss-empty-icon">📷</div>'
+            + '<p>还没有添加截图来源</p>'
+            + '<button class="btn btn-primary" data-action="ss-add-source">添加第一个来源</button>'
+            + '<div class="ss-empty-sub">支持 Steam、原神、星穹铁道、绝区零截图目录</div>'
+            + '</div>';
+        return;
+    }
+
+    // Select first source if none selected
+    if (!_ssCurrentSourceId || !_ssSources.some(function(s) { return s.id === _ssCurrentSourceId; })) {
+        _ssCurrentSourceId = _ssSources[0].id;
+    }
+
+    var currentSource = _ssSources.find(function(s) { return s.id === _ssCurrentSourceId; });
+    if (!currentSource) { wrapper.innerHTML = ''; return; }
+
+    // Check cache (30 second TTL)
+    var cached = _ssCache[_ssCurrentSourceId];
+    var now = Date.now();
+    if (!cached || now - cached.fetchedAt > 30000) {
+        renderSkeleton(wrapper);
+        scanScreenshots(currentSource);
+        return;
+    }
+
+    _ssEntries = cached.entries;
+    renderGridView(wrapper, currentSource);
+}
+
+function renderSkeleton(wrapper) {
+    var cards = '';
+    for (var i = 0; i < 6; i++) {
+        cards += '<div class="ss-card ss-skeleton"><div class="ss-thumb-placeholder"></div><div class="ss-info"></div></div>';
+    }
+    wrapper.innerHTML = ''
+        + renderToolbar()
+        + '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
+}
+
+function renderToolbar() {
+    var options = _ssSources.map(function(s) {
+        var selected = s.id === _ssCurrentSourceId ? ' selected' : '';
+        var label = s.name;
+        return '<option value="' + s.id + '"' + selected + '>' + escapeHtml(label) + '</option>';
+    }).join('');
+
+    return '<div class="ss-toolbar">'
+        + '<select data-action="ss-select-source">' + options + '</select>'
+        + '<input type="search" placeholder="搜索截图文件名..." value="' + escapeHtml(_ssSearchQuery) + '" data-action="ss-search">'
+        + '<button class="btn btn-primary" data-action="ss-add-source">+ 添加</button>'
+        + '<button class="btn btn-ghost" data-action="ss-refresh">🔄</button>'
+        + '</div>';
+}
+
+function renderGridView(wrapper, currentSource) {
+    // Filter by search query
+    var filtered = _ssEntries;
+    if (_ssSearchQuery) {
+        var q = _ssSearchQuery.toLowerCase();
+        filtered = _ssEntries.filter(function(e) {
+            return e.file_name.toLowerCase().indexOf(q) !== -1;
+        });
+    }
+
+    var totalPages = Math.max(1, Math.ceil(filtered.length / _ssPageSize));
+    if (_ssPage >= totalPages) _ssPage = 0;
+    var start = _ssPage * _ssPageSize;
+    var pageItems = filtered.slice(start, start + _ssPageSize);
+
+    // Pagination HTML
+    var paginationHtml = '<div class="ss-pagination">'
+        + '<span>第 ' + (_ssPage + 1) + ' 页，共 ' + totalPages + ' 页（' + filtered.length + ' 张）</span>'
+        + '<button class="btn-small" data-action="ss-prev-page"' + (_ssPage <= 0 ? ' disabled' : '') + '>‹ 上一页</button>'
+        + '<button class="btn-small" data-action="ss-next-page"' + (_ssPage >= totalPages - 1 ? ' disabled' : '') + '>下一页 ›</button>'
+        + '</div>';
+
+    // Grid cards
+    if (pageItems.length === 0) {
+        wrapper.innerHTML = renderToolbar() + paginationHtml
+            + '<div class="ss-empty"><p>没有找到匹配的截图</p></div>';
+        return;
+    }
+
+    var cards = pageItems.map(function(entry, idx) {
+        var absIdx = start + idx;
+        var tagHtml = entry.game_name
+            ? '<span class="ss-game-tag">' + escapeHtml(entry.game_name) + '</span>'
+            : '';
+        return '<div class="ss-card" data-action="ss-open" data-index="' + absIdx + '">'
+            + tagHtml
+            + '<div class="ss-thumb-placeholder">⏳</div>'
+            + '<div class="ss-hover-actions">'
+            + '<button class="ss-folder" data-action="ss-open-folder" data-path="' + escapeHtml(entry.path) + '" title="打开所在文件夹">📂</button>'
+            + '<button class="ss-del" data-action="ss-delete-file" data-path="' + escapeHtml(entry.path) + '" data-name="' + escapeHtml(entry.file_name) + '" title="删除">🗑</button>'
+            + '</div>'
+            + '<div class="ss-info">'
+            + '<span class="ss-name">' + escapeHtml(entry.file_name) + '</span>'
+            + '<span class="ss-date">' + escapeHtml(entry.modified.substring(5, 10)) + '</span>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+
+    wrapper.innerHTML = renderToolbar() + paginationHtml
+        + '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
+
+    // Load thumbnails after rendering
+    loadThumbnails(pageItems, wrapper, start);
+}
+
+function loadThumbnails(pageItems, wrapper, start) {
+    var paths = pageItems.map(function(e) { return e.path; });
+    invoke('get_screenshot_base64_batch', { paths: paths }).then(function(dataUris) {
+        var cards = wrapper.querySelectorAll('.ss-card');
+        dataUris.forEach(function(uri, i) {
+            var card = cards[i];
+            if (!card || !uri) return;
+            var placeholder = card.querySelector('.ss-thumb-placeholder');
+            if (placeholder) {
+                var img = document.createElement('img');
+                img.className = 'ss-thumb';
+                img.src = uri;
+                img.decoding = 'async';
+                img.loading = 'lazy';
+                img.alt = pageItems[i].file_name;
+                placeholder.parentNode.replaceChild(img, placeholder);
+            }
+        });
+    });
+}
+
+function scanScreenshots(source) {
+    invoke('scan_screenshots', { sourcePath: source.path }).then(function(entries) {
+        entries.forEach(function(e) {
+            e.source_id = source.id;
+            e.game_name = source.game_id ? getGameName(source.game_id) : null;
+        });
+        _ssCache[_ssCurrentSourceId] = { entries: entries, fetchedAt: Date.now() };
+        _ssEntries = entries;
+        _ssPage = 0;
+        var wrapper = document.getElementById('screenshotApp');
+        if (wrapper) renderGridView(wrapper, source);
+    }).catch(function() {
+        var wrapper = document.getElementById('screenshotApp');
+        if (wrapper) {
+            wrapper.innerHTML = renderToolbar()
+                + '<div class="ss-empty"><p>⚠️ 无法读取目录，请检查路径是否存在</p></div>';
+        }
+    });
+}
+
+function getGameName(gameId) {
+    if (!currentConfig.games) return null;
+    var game = currentConfig.games.find(function(g) { return g.id === gameId; });
+    return game ? game.name : null;
+}
 
 // ==================== 事件委托（一次性设置，替代每次渲染后重新绑定） ====================
 
