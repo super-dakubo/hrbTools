@@ -52,10 +52,10 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| [src/index.html](src/index.html) | 208 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置） |
-| [src/styles.css](src/styles.css) | 1980 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
-| [src/main.js](src/main.js) | 2805 | 全部前端逻辑，`// ===` 分隔 23 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | 1921 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
+| [src/index.html](src/index.html) | 210 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置） |
+| [src/styles.css](src/styles.css) | ~1950 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
+| [src/main.js](src/main.js) | ~2860 | 全部前端逻辑，`// ===` 分隔 23+ 区块 + 事件委托 |
+| [src/main.rs](src/main.rs) | ~1910 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
 | [icons/](icons/) | — | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
 | [tools/gen_icon.py](tools/gen_icon.py) | 132 | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
 
@@ -71,6 +71,8 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 ```
 
 **`set_auto_start` 条件执行：** `set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。`reg.exe` 子进程在 GUI 应用中约 3.3 秒，不要在任何读路径或保存路径中无条件调用。注册表写入路径追加 `--minimized` 参数以实现开机自启时保持隐藏。
+
+**配置备份：** `save_config` 在写入 config.json 前自动复制 `config.json → config.json.bak`（写入备份发生在写之前，不影响正常写入路径）。备份失败仅 `log_error`，不阻塞写入。
 
 ### 前端（src/main.js）分区
 
@@ -91,7 +93,9 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 | 启动（init） | `=== 启动 ===` | `DOMContentLoaded` → rAF 分步初始化 |
 | 日志系统（IIFE + 面板渲染） | `=== 日志系统 ===` + `=== 日志面板渲染 ===` | `window.__log`, `renderLogPanel`, `bindLogPanelEvents` |
 
-**事件委托模式：** 所有子元素事件绑定必须放在 `setupEventDelegation()` 中，用 `e.target.closest('[data-action]')` 匹配。禁止在渲染函数中绑定事件或加单独的 `addEventListener`。这是整个前端的事件架构核心，覆盖游戏标签、存档位、文件标签、备份列表、待办列表的全部交互。
+**事件委托模式：** 所有子元素事件绑定必须放在 `setupEventDelegation()` 中，用 `e.target.closest('[data-action]')` 匹配。禁止在渲染函数中绑定事件或加单独的 `addEventListener`。这是整个前端的事件架构核心，覆盖游戏标签、存档位、文件标签、备份列表、待办列表的全部交互。旧代码中的 `bind*Events()` 函数（如 `bindTabEvents`）已经废弃，新增交互直接在 `setupEventDelegation` 中添加 handler。
+
+**异步操作锁模式：** 所有防止重复提交的锁变量必须用 try-finally 释放，不可在 catch 之后释放。超时和 IPC 响应竞态必须用 `settled` 守卫变量（谁先到谁执行，后到的检查 `settled` 后跳过）。现有实例：`_switchLock`、`_saveInProgress`、`_backupListLock`。
 
 **日志流水线：** `window.__log`（环形缓冲区 2000 条）→ IPC `log_write` → `%APPDATA%/com.hrbTools.app/logs/YYYY-MM-DD.log`（10MB 自动轮转）
 
@@ -129,6 +133,8 @@ JS syncPendingReminders() → pending_reminders
 - 每周（`"weekly"`）：+7 天
 - 每月（`"monthly"`）：`checked_add_months` + day_mode clamp
 - 月尾模式：`day_mode = "last"`/`"second_last"`/`"third_last"`
+
+**`recalculateNextDue(todo)`** — 同时推进 `due_date` 和 `reminder.datetime` 到下一周期。`reminder.datetime` 推进独立于 `due_date`（有提醒没截止日期的待办也能推进）。每周最多推 52 轮，每月最多 12 轮，防止异常数据死循环。在 `renderTodos` 中自动对过期周期任务执行推期，确保永不显示"已过期"。
 
 ### 待办编辑弹窗
 
@@ -179,6 +185,8 @@ JS syncPendingReminders() → pending_reminders
 常用变量速查：`--bg`（背景）、`--text`（主文字）、`--text-secondary`（次要文字）、`--accent`（强调色，暗 `#4b8bf4` / 亮 `#3b82f6`）、`--border`（边框）、`--surface`（卡片底）、`--input-bg`（输入框）。需 `rgba()` 时用 `rgba(var(--accent-rgb), x)`。
 
 **玻璃拟态：** `--glass-bg`（玻璃底）、`--glass-border`（玻璃边框）、`--radius-glass`（玻璃圆角 14px）。暗色 `backdrop-filter: blur(16px)`，亮色 `backdrop-filter: blur(12px)` + 径向渐变背景衬托通透感。
+
+**语义变量：** `--holiday-accent`（节假日紫色高亮 `139, 92, 246`，暗/亮同值）用于 `.settings-group.holiday` 及相关元素，禁止硬编码紫色。
 
 ### 依赖
 
