@@ -48,7 +48,7 @@ struct ScreenshotEntry {
 }
 ```
 
-每次进入面板或切换来源时实时扫描返回，不存配置。
+每次进入面板或切换来源时扫描返回，前端缓存 30 秒。缓存有效期内切换来源/切 Tab 不重新扫描。
 
 ---
 
@@ -60,22 +60,23 @@ struct ScreenshotEntry {
 命令: scan_screenshots(sourcePath: string) → Vec<ScreenshotEntry>
 ```
 
-- 递归扫描指定目录
-- 过滤图片格式：`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`
+- 递归扫描指定目录（递归深度 ≤ 3 层，防符号链接循环）
+- 过滤图片格式：`png`, `jpg`, `jpeg`, `webp`, `bmp`, `gif`（检查 `Path::extension()` 转小写）
 - 返回文件名、路径、修改时间、大小
-- 按修改时间降序排列（最新在前）
-- 大目录（>500 文件）限时 2 秒返回前 N 条，避免主线程卡顿
+- 按文件修改时间降序排列（最新在前），最多返回 50 张
+- **异步执行**：`#[tauri::command]` 内部用 `tokio::task::spawn_blocking` 防止阻塞主线程
+- **安全**：先 `canonicalize` 解析路径，验证实际路径位于已注册来源目录下。`sourcePath` 经过 `sanitize_path_component` 和扩展名白名单双重过滤
 
-### 3.2 `get_screenshot_base64`
+### 3.2 `get_screenshot_base64_batch`
 
 ```
-命令: get_screenshot_base64(path: string) → string
+命令: get_screenshot_base64_batch(paths: string[]) → Vec<string>
 ```
 
-- 读取图片文件，编码为 base64
-- 不做缩放（WebView 自动处理显示大小）
-- 返回 `data:image/png;base64,...` 格式字符串
-- 单次调用缓存 5 秒避免频繁大文件读取
+- 替代旧的单条 `get_screenshot_base64`，一次 IPC 批量返回整页（最多 20 条）
+- 每条返回 `data:image/{ext};base64,{encoded}` 格式
+- **LRU 缓存**：最多缓存 100 条或 500MB，超限时淘汰最旧条目
+- `<img decoding="async" loading="lazy">` 防解码阻塞主线程
 
 ### 3.3 `detect_screenshot_sources`
 
@@ -84,7 +85,7 @@ struct ScreenshotEntry {
 ```
 
 - 扫描已知平台的截图来源
-- **Steam**: 检测 `Steam/userdata/*/760/remote/*/screenshots/`，尝试读取 `screenshots.vdf` / `libraryfolders.vdf` 解析 appid → 游戏名；或通过 `steamapps/common/*.acf`  获取已安装游戏名。回退时用 `appid` 自身。
+- **Steam**: 先读注册表 `HKCU\Software\Valve\Steam\SteamPath` 定位安装目录，再检测 `userdata/*/760/remote/*/screenshots/`。用极简 VDF 解析器（~50 行，不引入依赖）读取 `screenshots.vdf` / `libraryfolders.vcf` 翻译 appid → 游戏名。回退时用 appid 自身。
 - **米哈游**: 检测三个游戏文档目录是否存在，统计图片数量
 - 返回检测结果供前端渲染快速添加对话框
 
@@ -116,6 +117,7 @@ struct DetectedSource {
 ```
 
 - 调用 `std::fs::remove_file`
+- **安全**：`canonicalize` 解析后验证目标路径位于已注册来源目录下，防止路径穿越
 - 失败返回错误消息
 
 ---
@@ -129,6 +131,8 @@ struct DetectedSource {
 │  📷 游戏截图          共 42 张 · 占用 128 MB       │
 ├─ 工具栏 ───────────────────────────────────────────┤
 │  [▼ 选择来源]  [‹ ›]  [🔍 搜索...]  [+ 添加]  [🔄]│
+├─ 分页信息 ────────────────────────────────────────┤
+│  第 1 页，共 3 页（42 张）    [‹ 上一页] [下一页 ›]│
 ├─ 缩略图网格 (auto-fill, minmax(200px, 1fr)) ──────┤
 │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐              │
 │  │ 缩略  │ │ 缩略  │ │ 缩略  │ │ 缩略  │            │
@@ -149,18 +153,27 @@ struct DetectedSource {
 |------|------|
 | 点击卡片 | 打开 Lightbox 大图预览 |
 | 悬停 | 右上角出现操作按钮组（打开文件夹 / 删除） |
-| 删除 | 弹窗确认后再删 |
+| 常显 | 卡片右下角 "···" 更多菜单（hover 不可达时的回退） |
+| 删除 | `confirm()` 弹窗确认后再删 |
 | 卡片信息 | 文件名（溢出省略）+ 修改日期 |
 
 **游戏关联徽标** — 卡片左上角显示关联游戏名标签（如"🎮 艾尔登法环"）
+
+**加载状态** — 扫描期间以灰色骨架卡片占位（6 张 `@keyframes shimmer`），扫描完成后替换为真实缩略图。
+
+**空状态** — 居中显示「📷 还没有添加截图来源」+ 大按钮「添加第一个来源」+ 小字说明"支持 Steam、原神、星穹铁道、绝区零截图目录"。
+
+**错误状态** — 读取失败时显示「⚠️ 无法读取目录，请检查路径是否存在」。
 
 ### 4.3 Lightbox 大图预览
 
 - 全屏遮罩，深色半透明背景 + `backdrop-filter: blur(8px)`
 - 大图居中，max 85vw/85vh
-- 键盘 ← → 切换，ESC 关闭
+- `opacity` 过渡动画 0.2s ease（匹配现有设计系统）
+- 键盘 ← → 切换（`e.preventDefault()` 阻止页面滚动），ESC 关闭
 - 底部页码显示：`3 / 12 张`
 - 点击遮罩背景关闭
+- **切 Tab 时自动关闭** — `switchTab` 中主动关闭 Lightbox
 
 ### 4.4 空状态
 
@@ -196,7 +209,9 @@ struct DetectedSource {
 ### 4.6 搜索
 
 - 实时按文件名过滤（客户端，在已扫描结果中匹配）
+- 300ms `setTimeout` 防抖（键盘输入不立即触发，用户停止输入后 300ms 才过滤）
 - 不发起新扫描
+- 无匹配时显示「没有找到匹配的截图」
 
 ---
 
@@ -210,34 +225,39 @@ struct DetectedSource {
 
 ### 5.2 安全
 
-- `scan_screenshots`、`get_screenshot_base64`、`delete_screenshot` 的参数必须经过 `sanitize_path_component()` 防止路径穿越
+- **路径穿越防护**：所有接受文件路径的命令（`delete_screenshot`, `get_screenshot_base64_batch`），先用 `std::path::Path::canonicalize()` 解析绝对路径，然后验证其前缀是否与某个已注册来源的 `canonicalize` 路径匹配。不在来源目录树下的文件拒绝操作。
 - 图片文件类型通过扩展名白名单过滤（`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, `.gif`），不依赖 MIME 检测
 
-### 5.3 性能
+### 5.3 异步执行
 
-- 单来源超过 500 张时，`scan_screenshots` 设 2 秒超时返回前 N 条
-- `get_screenshot_base64` 单次调用缓存 5 秒（同一文件不重复读盘）
-- Lightbox 中预加载前后各 1 张（`<link rel="preload">`）
+- **`scan_screenshots`**、**`get_screenshot_base64_batch`**、**`detect_screenshot_sources`** 等 I/O 密集型命令在 `#[tauri::command]` 中通过 `spawn_blocking` 执行，不阻塞 Tauri 主线程
 
-### 5.4 Tab 切换
+### 5.4 性能
+
+- 分页：每页 20 张，最多扫描 50 张（`scan_screenshots` 上限）
+- LRU 缓存：`get_screenshot_base64_batch` 结果缓存 100 条目或 500MB，超限淘汰最旧
+- 前端扫描结果缓存 30 秒，切 Tab 回来未超限不重新扫描
+- Lightbox 前后各 1 张预加载
+
+### 5.5 Tab 切换
 
 - 截图面板完全遵循 Tab 切换的四条性能约束（执行锁、合成层、escapeHtml、防抖）
 - 首次切到截图 Tab 时触发 `scan_screenshots`，后续切换只刷新已缓存数据
 
-### 5.5 事件模型
+### 5.6 事件模型
 
 - 新面板的全部事件绑定走 `setupEventDelegation()`
 - `data-action` 属性前缀：`screenshot-*`（如 `screenshot-open`, `screenshot-delete`, `screenshot-prev`, `screenshot-next`）
 - 新 action 直接在 `setupEventDelegation` 中添加，不新建 `addEventListener`
 
-### 5.6 CSS
+### 5.7 CSS
 
 - 截图面板样式放在 `styles.css` 末尾，以 `.panel-screenshot` 前缀隔离
 - 网格卡片、Lightbox 遮罩、工具栏样式复用现有设计令牌（`--surface`, `--glass-bg`, `--accent` 等）
 - 新增语义 CSS 变量（如需）：`--lightbox-overlay`（预览遮罩色）
 - 禁止硬编码色值
 
-### 5.7 图片加载限制
+### 5.8 图片加载限制
 
 由于 Tauri 安全策略限制（CSP），从文件系统加载图片不能直接用 `<img src="file:///path">`。必须通过 Rust 端读取后以 base64 `data:` URI 形式传递给前端。
 
@@ -249,10 +269,11 @@ struct DetectedSource {
 
 | 文件 | 改动量 | 说明 |
 |------|--------|------|
-| `src/main.rs` | +~150 行 | 新增 ScreenshotSource 结构体，6 个 Tauri 命令，config 读写扩展，`generate_handler!` 注册 |
-| `src/main.js` | +~400 行 | 新增截图面板区块（渲染、交互、Lightbox），配置更新，来源管理，事件委托扩展 |
-| `src/styles.css` | +~150 行 | 截图面板样式（网格、卡片、Lightbox、对话框、工具栏），`index.html` 新增 1 个面板容器 |
+| `src/main.rs` | +~180 行 | 新增 ScreenshotSource 结构体，7 个 Tauri 命令，config 读写扩展，`generate_handler!` 注册，LRU 缓存，VDF 解析器 |
+| `src/main.js` | +~450 行 | 新增截图面板区块（渲染、分页、搜索防抖、Lightbox、骨架屏），配置更新，来源管理，事件委托扩展 |
+| `src/styles.css` | +~180 行 | 截图面板样式（网格、卡片、Lightbox、骨架屏、对话框、工具栏、分页），`index.html` 新增 1 个面板容器 |
 | `src/index.html` | +~30 行 | 新增截图面板 HTML 骨架，Tab 图标 |
+| `Cargo.toml` | +1 行 | 新增 `base64 = "0.22"` 依赖 |
 
 ---
 
