@@ -2,12 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **代码开发前必须阅读 [LESSONS.md](./docs/LESSONS.md)** — 本项目反复踩过的坑和硬性约束。特别关注：
-> - 「Tab 切换：四条规则缺一不可」— 性能核心
-> - 「实体关联用 ID，不要用名称」— 数据一致性
-> - 「不要在只读路径中执行写操作」— `load_*`/`get_*` 无副作用
-> - 「引入依赖前评估数据量级」— chrono-tz 2-3MB 的教训
-> **README 截图见 [screenshots/](./screenshots/) 目录** — 截图和演示 GIF 放这里。
+> **修改代码前必须先读 [LESSONS.md](./docs/LESSONS.md)** — 本项目反复踩过的坑。
+> **README 截图见 [screenshots/](./screenshots/) 目录**。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
 > **处理特定功能时先查 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节** — 数据结构、命令列表、持久化、DST、备份、窗口等详细参考。
 >
@@ -55,7 +51,7 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 | [src/index.html](src/index.html) | 210 | HTML 骨架 + 内联启动 IPC 脚本，6 面板 DOM（时间转换/备份/待办/截图/日志/设置） |
 | [src/styles.css](src/styles.css) | ~2220 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
 | [src/main.js](src/main.js) | ~3360 | 全部前端逻辑，`// ===` 分隔 24+ 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | ~2530 | 全部 Rust 逻辑，14 个功能分区，35 个 Tauri 命令 |
+| [src/main.rs](src/main.rs) | ~2647 | 全部 Rust 逻辑，35 个 Tauri 命令，SpringBoot 风格架构标签 |
 | [icons/](icons/) | — | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
 | [tools/gen_icon.py](tools/gen_icon.py) | 132 | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
 
@@ -111,29 +107,13 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 ```text
 JS syncPendingReminders() → pending_reminders
-→ Rust 线程每 5s 消费到期项
-    → notify-rust + Beep → banners → save_config()
-    → eval("__onReminderFired()")
+→ Rust 线程每 5s 消费到期项 → notify-rust + Beep → banners → save_config()
 → JS get_config() → renderBanners()
 ```
 
-**设计约束（改提醒逻辑时必须遵守）：**
+**设计约束：** JS 生产 pending_reminders，Rust 消费（两方不共享同一字段）。Rust 消费后 `save_config()`，JS 只读刷新。5 分钟陈旧跳过防关机后批量触发。
 
-- JS 生产 `pending_reminders`，Rust 消费。两方不共享同一个对象的同一个字段
-- `syncPendingReminders()` 检查每个待办是否已有对应 `pending_reminder`，存在则跳过
-- 5 分钟陈旧跳过：`now - fire_at > 300_000` 的直接丢弃，防关机后批量触发
-- Rust 线程消费后 `save_config()` 持久化，JS 只读刷新（`get_config`），不写
-- 每日提醒支持设工作日/休息日两个时间，可选"休息日不提醒"
-
-**提醒类型推期行为：**
-
-- 一次性（`repeat = null`）：不推期，消费后标记完成
-- 每日（`"daily"`）：按 `get_day_type` 选 `workday_time`/`restday_time`，扫描下一天
-- 每周（`"weekly"`）：+7 天
-- 每月（`"monthly"`）：`checked_add_months` + day_mode clamp
-- 月尾模式：`day_mode = "last"`/`"second_last"`/`"third_last"`
-
-**`recalculateNextDue(todo)`** — 同时推进 `due_date` 和 `reminder.datetime` 到下一周期。`reminder.datetime` 推进独立于 `due_date`（有提醒没截止日期的待办也能推进）。每周最多推 52 轮，每月最多 12 轮，防止异常数据死循环。在 `renderTodos` 中自动对过期周期任务执行推期，确保永不显示"已过期"。
+**推期规则：** 一次性不推期；每日按 `get_day_type` 选 workday_time/restday_time；每周 +7d；每月 `checked_add_months` + day_mode（支持月末/倒数第2/倒数第3模式）。`recalculateNextDue(todo)` 同时推进 `due_date` 和 `reminder.datetime`，每周最多 52 轮/每月 12 轮防死循环。详情见 ARCHITECTURE.md。
 
 ### 待办编辑弹窗
 
@@ -150,6 +130,21 @@ JS syncPendingReminders() → pending_reminders
 - `.dialog-box` — 玻璃背景弹窗容器，`backdrop-filter: blur(20px)`，scaleIn 入场动画
 
 各弹窗只写差异覆盖，见 `docs/design-system.md` 第 6.3 节。HTML 使用：`<div class="todo-edit-overlay dialog-overlay">`。
+
+### 架构标签注释（main.rs）
+
+main.rs 所有函数和结构体顶部有 SpringBoot 风格标签（最近新增）：
+
+| 标签 | 对应 SpringBoot | 适用对象 |
+| --- | --- | --- |
+| `// @Endpoint` | `@Controller` | `#[tauri::command]` 函数 |
+| `// @Service` | `@Service` | 业务逻辑函数 |
+| `// @Entity` | `@Entity` | 数据结构体 |
+| `// @Setup` | `@Configuration` | `main()`, setup 函数 |
+| `// @Repository` | `@Repository` | 配置持久化 |
+| `// @Utils` | `@Utils` | 工具函数 |
+
+标签行用 `// @` 前缀，后续为 `<标签> <一句话说明>`，方便 Grep 搜索（如 `grep "@Endpoint"`）。
 
 ### 后端（src/main.rs）
 
