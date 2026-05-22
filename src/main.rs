@@ -447,15 +447,17 @@ async fn scan_screenshots(
     // Security: canonicalize to detect path traversal
     let canonical = resolved_path.canonicalize().map_err(|_| "路径不存在".to_string())?;
 
-    // Verify that resolved path is under a registered source
-    let is_valid = config.screenshot_sources.iter().any(|s| {
+    // Verify that resolved path is under a registered source and capture source_id
+    let source_id = config.screenshot_sources.iter().find_map(|s| {
         std::path::Path::new(&s.path).canonicalize()
-            .map(|p| canonical.starts_with(&p))
-            .unwrap_or(false)
+            .ok()
+            .filter(|p| canonical.starts_with(p))
+            .map(|_| s.id.clone())
     });
-    if !is_valid {
-        return Err("未授权的路径".to_string());
-    }
+    let source_id = match source_id {
+        Some(id) => id,
+        None => return Err("未授权的路径".to_string()),
+    };
 
     // Run blocking I/O on thread pool
     let entries = tauri::async_runtime::spawn_blocking(move || {
@@ -470,10 +472,12 @@ async fn scan_screenshots(
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir() && dirs.len() < 3 {
-                        dirs.push(path);
-                    } else if path.is_file() && is_image_file(&path) && results.len() < 50 {
-                        if let Ok(meta) = path.metadata() {
+                    // Combine metadata calls: is_dir/is_file share one syscall
+                    if let Ok(meta) = path.metadata() {
+                        if meta.is_dir() && dirs.len() < 3 {
+                            // Breadth limit: at most 3 subdirectories scanned concurrently
+                            dirs.push(path);
+                        } else if meta.is_file() && is_image_file(&path) && results.len() < 50 {
                             if let Ok(modified) = meta.modified() {
                                 let datetime: chrono::DateTime<chrono::Local> = modified.into();
                                 results.push(ScreenshotEntry {
@@ -484,7 +488,7 @@ async fn scan_screenshots(
                                     path: path.to_string_lossy().to_string(),
                                     modified: datetime.format("%Y-%m-%d %H:%M").to_string(),
                                     size: meta.len(),
-                                    source_id: String::new(),
+                                    source_id: source_id.clone(),
                                     game_name: None,
                                 });
                             }
