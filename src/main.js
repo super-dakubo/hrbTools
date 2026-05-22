@@ -18,6 +18,7 @@ let _ssPageSize = 20;          // Items per page
 let _ssCache = {};             // sourceId -> { entries, fetchedAt }
 let _ssSearchQuery = '';       // Current search filter
 let _ssSearchTimer = null;     // Debounce timer
+let _ssLbIndex = -1;           // Lightbox current index
 
 // ==================== DOM 引用 ====================
 
@@ -2605,6 +2606,157 @@ function getGameName(gameId) {
     return game ? game.name : null;
 }
 
+// ─── Lightbox ───
+
+function openLightbox(index) {
+    if (!_ssEntries || index < 0 || index >= _ssEntries.length) return;
+    _ssLbIndex = index;
+    var entry = _ssEntries[index];
+
+    var lb = document.getElementById('ssLightbox');
+    if (!lb) {
+        lb = document.createElement('div');
+        lb.id = 'ssLightbox';
+        lb.className = 'ss-lightbox';
+        lb.innerHTML = '<button class="ss-lb-close" data-action="ss-lb-close">✕</button>'
+            + '<button class="ss-lb-nav ss-lb-prev" data-action="ss-lb-prev">‹</button>'
+            + '<button class="ss-lb-nav ss-lb-next" data-action="ss-lb-next">›</button>'
+            + '<img class="ss-lb-image" id="ssLbImg" alt="">'
+            + '<div class="ss-lb-footer" id="ssLbFooter"></div>';
+        lb.addEventListener('click', function(e) {
+            if (e.target === lb) closeLightbox();
+        });
+        document.body.appendChild(lb);
+    }
+
+    var img = document.getElementById('ssLbImg');
+    img.style.display = 'none';
+    lb.classList.add('open');
+
+    invoke('get_screenshot_base64_batch', { paths: [entry.path] }).then(function(dataUris) {
+        if (dataUris[0]) {
+            img.src = dataUris[0];
+            img.style.display = '';
+        }
+    });
+
+    updateLightboxFooter();
+}
+
+function closeLightbox() {
+    var lb = document.getElementById('ssLightbox');
+    if (lb) {
+        lb.classList.remove('open');
+        _ssLbIndex = -1;
+    }
+}
+
+function navigateLightbox(dir) {
+    var newIdx = _ssLbIndex + dir;
+    if (newIdx < 0 || newIdx >= _ssEntries.length) return;
+    openLightbox(newIdx);
+}
+
+function updateLightboxFooter() {
+    var footer = document.getElementById('ssLbFooter');
+    if (footer) {
+        footer.textContent = (_ssLbIndex + 1) + ' / ' + _ssEntries.length + ' 张';
+    }
+}
+
+// ─── Add Source Dialog ───
+
+function openAddSourceDialog() {
+    var existing = document.getElementById('ssAddDialog');
+    if (existing) { existing.classList.add('open'); return; }
+
+    var dialog = document.createElement('div');
+    dialog.id = 'ssAddDialog';
+    dialog.className = 'ss-add-dialog';
+    dialog.innerHTML = '<div class="ss-dialog-box">'
+        + '<h3>添加截图来源</h3>'
+        + '<div class="ss-dialog-section">'
+        + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">自定义文件夹</p>'
+        + '<button class="btn btn-primary" data-action="ss-pick-folder">📁 浏览...</button>'
+        + '</div>'
+        + '<div class="ss-dialog-section" id="ssDetectedSection">'
+        + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">快速添加 — 正在检测...</p>'
+        + '</div>'
+        + '<div style="text-align:right">'
+        + '<button class="btn btn-ghost" data-action="ss-close-dialog">取消</button>'
+        + '</div>'
+        + '</div>';
+
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) dialog.classList.remove('open');
+    });
+
+    document.body.appendChild(dialog);
+    dialog.classList.add('open');
+
+    invoke('detect_screenshot_sources').then(function(sources) {
+        var section = document.getElementById('ssDetectedSection');
+        if (!section) return;
+        if (!sources || sources.length === 0) {
+            section.innerHTML = '<p style="font-size:13px;color:var(--text-secondary)">未检测到已知截图来源，请使用浏览按钮手动添加</p>';
+            return;
+        }
+
+        var html = '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">检测到以下来源：</p>';
+        sources.forEach(function(s, i) {
+            html += '<label class="ss-detected-item">'
+                + '<input type="checkbox" data-action="ss-toggle-detected" data-index="' + i + '" checked>'
+                + '<span>' + escapeHtml(s.name) + '</span>'
+                + '<span class="ss-count">' + s.count + ' 张</span>'
+                + '</label>';
+        });
+
+        window._ssDetectedSources = sources;
+
+        html += '<div style="margin-top:12px"><button class="btn btn-primary" data-action="ss-add-detected">添加所选</button></div>';
+        section.innerHTML = html;
+    }).catch(function() {
+        var section = document.getElementById('ssDetectedSection');
+        if (section) {
+            section.innerHTML = '<p style="font-size:13px;color:var(--text-secondary)">检测失败，请使用浏览按钮手动添加</p>';
+        }
+    });
+}
+
+function closeAddDialog() {
+    var dialog = document.getElementById('ssAddDialog');
+    if (dialog) dialog.classList.remove('open');
+}
+
+function addDetectedSources() {
+    var sources = window._ssDetectedSources || [];
+    var checks = document.querySelectorAll('#ssAddDialog input[data-action="ss-toggle-detected"]:checked');
+    var pending = 0;
+
+    checks.forEach(function(cb) {
+        var idx = parseInt(cb.dataset.index);
+        var src = sources[idx];
+        if (!src) return;
+        pending++;
+        invoke('add_screenshot_source', { name: src.name, path: src.path, gameId: null });
+    });
+
+    if (pending > 0) {
+        setTimeout(function() {
+            refreshScreenshotConfig();
+            closeAddDialog();
+        }, 500);
+    }
+}
+
+function refreshScreenshotConfig() {
+    invoke('get_config').then(function(config) {
+        currentConfig = config;
+        _ssSources = config.screenshot_sources || [];
+        renderScreenshotPanel();
+    });
+}
+
 // ==================== 事件委托（一次性设置，替代每次渲染后重新绑定） ====================
 
 function setupEventDelegation() {
@@ -2863,7 +3015,108 @@ function setupEventDelegation() {
         todoFilterStatus.value = span.dataset.filter;
         renderTodos();
     });
+
+    // ─── 截图面板 ───
+    var ssPanel = document.getElementById('panel-screenshot');
+    if (ssPanel) {
+        ssPanel.addEventListener('click', function(e) {
+            var target = e.target.closest('[data-action]');
+            if (!target) return;
+            var action = target.dataset.action;
+
+            if (action === 'ss-select-source') {
+                _ssCurrentSourceId = target.value;
+                _ssPage = 0;
+                renderScreenshotPanel();
+            }
+            else if (action === 'ss-search') {
+                var value = target.value;
+                clearTimeout(_ssSearchTimer);
+                _ssSearchTimer = setTimeout(function() {
+                    _ssSearchQuery = value;
+                    _ssPage = 0;
+                    renderScreenshotPanel();
+                }, 300);
+            }
+            else if (action === 'ss-refresh') {
+                delete _ssCache[_ssCurrentSourceId];
+                _ssPage = 0;
+                renderScreenshotPanel();
+            }
+            else if (action === 'ss-add-source') {
+                openAddSourceDialog();
+            }
+            else if (action === 'ss-prev-page') {
+                if (_ssPage > 0) { _ssPage--; renderScreenshotPanel(); }
+            }
+            else if (action === 'ss-next-page') {
+                var totalPages = Math.ceil(_ssEntries.length / _ssPageSize);
+                if (_ssPage < totalPages - 1) { _ssPage++; renderScreenshotPanel(); }
+            }
+            else if (action === 'ss-open') {
+                var idx = parseInt(target.dataset.index);
+                openLightbox(idx);
+            }
+            else if (action === 'ss-open-folder') {
+                var path = target.dataset.path;
+                invoke('open_folder', { path: path });
+            }
+            else if (action === 'ss-delete-file') {
+                var path = target.dataset.path;
+                var name = target.dataset.name;
+                if (confirm('确定删除截图 "' + name + '"？')) {
+                    invoke('delete_screenshot', { path: path }).then(function(res) {
+                        if (res.success) {
+                            var cached = _ssCache[_ssCurrentSourceId];
+                            if (cached) {
+                                cached.entries = cached.entries.filter(function(e) { return e.path !== path; });
+                            }
+                            renderScreenshotPanel();
+                        } else {
+                            alert('删除失败: ' + res.message);
+                        }
+                    });
+                }
+            }
+            else if (action === 'ss-lb-close' || action === 'ss-close-dialog') {
+                closeLightbox();
+                closeAddDialog();
+            }
+            else if (action === 'ss-lb-prev') {
+                navigateLightbox(-1);
+            }
+            else if (action === 'ss-lb-next') {
+                navigateLightbox(1);
+            }
+            else if (action === 'ss-pick-folder') {
+                invoke('pick_directory').then(function(dir) {
+                    if (dir) {
+                        var name = dir.split(/[/\\]/).pop() || '截图';
+                        invoke('add_screenshot_source', { name: name, path: dir, gameId: null }).then(function(res) {
+                            if (res.success) {
+                                refreshScreenshotConfig();
+                            } else {
+                                alert('添加失败: ' + res.message);
+                            }
+                        });
+                    }
+                });
+            }
+            else if (action === 'ss-add-detected') {
+                addDetectedSources();
+            }
+        });
+    }
 }
+
+// ─── 截图 Lightbox 键盘导航 ───
+document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('ssLightbox');
+    if (!lb || !lb.classList.contains('open')) return;
+    if (e.key === 'Escape') { closeLightbox(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); navigateLightbox(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); navigateLightbox(1); }
+});
 
 // ==================== 日志系统 ====================
 
