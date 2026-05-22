@@ -168,8 +168,6 @@ function bindTabEvents() {
 
 function switchTab(tabId) {
     var now = performance.now();
-    window.__log.perf('TabSwitch', '请求切到' + tabId, { lock: _switchLock });
-
     if (_switchLock) {
         window.__log.perf('TabSwitch', '阻断: 切换锁占用中', { tabId: tabId });
         return;
@@ -313,7 +311,6 @@ function renderTimezoneSets() {
             </div>
         </div>`;
     }).join('');
-    window.__log.perf('Render', 'renderTimezoneSets', { ms: +(performance.now() - t0).toFixed(2), sets: currentConfig.timezone_sets.length });
 }
 
 function saveTimezoneValues() {
@@ -479,7 +476,10 @@ async function loadConfig() {
     var tStartup = performance.now();
     // 使用头部脚本预热的 IPC 调用（冷启动已在 HTML 解析阶段完成）
     var config = window.__configPromise ? await window.__configPromise : null;
-    if (!config) config = await invoke('get_config');
+    if (!config) {
+        window.__log.error('Config', '获取配置失败: IPC 返回空');
+        config = await invoke('get_config');
+    }
     currentConfig = config;
     // 迁移旧 reminder.datetime → workday_time/restday_time（仅重复待办）
     (currentConfig.todos || []).forEach(function(t) {
@@ -531,7 +531,11 @@ async function loadConfig() {
 }
 
 async function saveConfigToBackend() {
-    await invoke('set_config', { config: currentConfig });
+    try {
+        await invoke('set_config', { config: currentConfig });
+    } catch (err) {
+        window.__log.error('Config', '保存配置失败: ' + err);
+    }
 }
 
 // ==================== 文件标签管理 ====================
@@ -571,7 +575,6 @@ function renderFileTags() {
         }).join('') + '<button class="file-tag-add" id="addFileBtn" title="添加文件">+</button>';
     }
 
-    window.__log.perf('Render', 'renderFileTags', { ms: +(performance.now() - t0).toFixed(2), files: paths.length });
     }
 
 // ==================== 游戏标签渲染 ====================
@@ -663,11 +666,11 @@ async function toggleGamePin(gameId) {
 
 function renderSlotTabs() {
     var t0 = performance.now();
-    if (!selectedGameId) { slotTabs.innerHTML = ''; window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: 0 }); return; }
+    if (!selectedGameId) { slotTabs.innerHTML = ''; return; }
     const game = currentConfig.games.find(g => g.id === selectedGameId);
     if (!game || game.slots.length === 0) {
         slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>';
-        window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: 0 }); return;
+        return;
     }
 
     slotTabs.innerHTML = '<span class="slot-tabs-label">存档位</span>' +
@@ -680,7 +683,6 @@ function renderSlotTabs() {
         }).join('') +
         `<button class="slot-tag-add" id="addSlotBtn" title="新增存档位">+</button>`;
 
-    window.__log.perf('Render', 'renderSlotTabs', { ms: +(performance.now() - t0).toFixed(2), slots: game.slots.length });
 }
 
 function startInlineEditSlot(tag) {
@@ -830,7 +832,6 @@ saveBackupBtn.addEventListener('click', async () => {
 
 async function refreshBackupList() {
     if (_backupListLock) {
-        window.__log.perf('Backup', '阻断: refreshBackupList 锁占用中');
         return;
     }
     _backupListLock = true;
@@ -858,7 +859,6 @@ async function refreshBackupList() {
 
             if (backups.length === 0) {
                 backupList.innerHTML = '<div class="empty-hint">暂无备份</div>';
-                window.__log.perf('Render', 'refreshBackupList', { ms: +(performance.now() - t0).toFixed(2), backups: 0, ipc: ipcMs });
                 return;
             }
 
@@ -1146,7 +1146,6 @@ function toggleSettings() {
         var panel = document.getElementById('panel-settings');
         if (panel) panel.classList.add('active');
         renderSettingsTabBar();
-        window.__log.info('Settings', '进入设置面板');
     }
 }
 
@@ -1509,7 +1508,6 @@ function shortenPath(path) {
 
 async function refreshAll() {
     if (_refreshLock) {
-        window.__log.perf('Backup', '阻断: refreshAll 锁占用中');
         return;
     }
     _refreshLock = true;
@@ -1942,43 +1940,47 @@ function calculateFireAt(todo) {
 }
 
 function syncPendingReminders() {
-    currentConfig.pending_reminders = currentConfig.pending_reminders || [];
-    var changed = false;
+    try {
+        currentConfig.pending_reminders = currentConfig.pending_reminders || [];
+        var changed = false;
 
-    // 清理已删除待办的孤儿 pending_reminder
-    var todoIds = new Set((currentConfig.todos || []).map(function(t) { return t.id; }));
-    var before = currentConfig.pending_reminders.length;
-    currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return todoIds.has(r.todo_id); });
-    if (currentConfig.pending_reminders.length !== before) changed = true;
+        // 清理已删除待办的孤儿 pending_reminder
+        var todoIds = new Set((currentConfig.todos || []).map(function(t) { return t.id; }));
+        var before = currentConfig.pending_reminders.length;
+        currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return todoIds.has(r.todo_id); });
+        if (currentConfig.pending_reminders.length !== before) changed = true;
 
-    (currentConfig.todos || []).forEach(function(t) {
-        if (t.done || t.paused || !t.reminder) {
-            var had = currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; });
-            if (had) {
-                currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return r.todo_id !== t.id; });
-                changed = true;
+        (currentConfig.todos || []).forEach(function(t) {
+            if (t.done || t.paused || !t.reminder) {
+                var had = currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; });
+                if (had) {
+                    currentConfig.pending_reminders = currentConfig.pending_reminders.filter(function(r) { return r.todo_id !== t.id; });
+                    changed = true;
+                }
+                return;
             }
-            return;
-        }
-        if (currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; })) return;
+            if (currentConfig.pending_reminders.some(function(r) { return r.todo_id === t.id; })) return;
 
-        var fireAt = calculateFireAt(t);
-        if (!fireAt) return;
+            var fireAt = calculateFireAt(t);
+            if (!fireAt) return;
 
-        currentConfig.pending_reminders.push({
-            id: crypto.randomUUID(),
-            todo_id: t.id,
-            text: t.text,
-            fire_at: fireAt,
-            sound: t.reminder.sound || false,
-            repeat: t.repeat || null,
-            workday_time: t.reminder.workday_time || null,
-            restday_time: t.reminder.restday_time || null,
-            day_mode: t.reminder.day_mode || '',
+            currentConfig.pending_reminders.push({
+                id: crypto.randomUUID(),
+                todo_id: t.id,
+                text: t.text,
+                fire_at: fireAt,
+                sound: t.reminder.sound || false,
+                repeat: t.repeat || null,
+                workday_time: t.reminder.workday_time || null,
+                restday_time: t.reminder.restday_time || null,
+                day_mode: t.reminder.day_mode || '',
+            });
+            changed = true;
         });
-        changed = true;
-    });
-    if (changed) saveConfigToBackend();
+        if (changed) saveConfigToBackend();
+    } catch (err) {
+        window.__log.error('Reminder', '同步待提醒列表异常: ' + err);
+    }
 }
 
 function updateReminderSummary() {
