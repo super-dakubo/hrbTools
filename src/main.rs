@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Write, BufReader, BufWriter, Read};
 use std::path::PathBuf;
+use std::time::Instant;
+use base64::Engine;
 use tauri::Manager;
 use md5::{Md5, Digest};
 
@@ -436,6 +438,70 @@ fn is_image_file(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
+// ---- LRU Cache for screenshots base64 ----
+
+struct Base64CacheEntry {
+    data: String,
+    fetched_at: Instant,
+    size: u64,
+}
+
+struct Base64Cache {
+    entries: std::collections::HashMap<String, Base64CacheEntry>,
+    access_order: Vec<String>,
+    max_entries: usize,
+    max_bytes: u64,
+    current_bytes: u64,
+}
+
+impl Base64Cache {
+    fn new() -> Self {
+        Self {
+            entries: std::collections::HashMap::new(),
+            access_order: Vec::new(),
+            max_entries: 100,
+            max_bytes: 500 * 1024 * 1024,
+            current_bytes: 0,
+        }
+    }
+
+    fn get(&mut self, key: &str) -> Option<&String> {
+        if let Some(entry) = self.entries.get_mut(key) {
+            // Move to front (most recently used)
+            if let Some(pos) = self.access_order.iter().position(|k| k == key) {
+                self.access_order.remove(pos);
+            }
+            self.access_order.push(key.to_string());
+            Some(&entry.data)
+        } else {
+            None
+        }
+    }
+
+    fn insert(&mut self, key: String, data: String, size: u64) {
+        // Evict if needed
+        while self.entries.len() >= self.max_entries || self.current_bytes + size > self.max_bytes {
+            if let Some(oldest) = self.access_order.first().cloned() {
+                if let Some(evicted) = self.entries.remove(&oldest) {
+                    self.current_bytes = self.current_bytes.saturating_sub(evicted.size);
+                }
+                self.access_order.remove(0);
+            } else {
+                break;
+            }
+        }
+
+        let entry = Base64CacheEntry {
+            data: data.clone(),
+            fetched_at: Instant::now(),
+            size,
+        };
+        self.current_bytes += size;
+        self.entries.insert(key.clone(), entry);
+        self.access_order.push(key);
+    }
+}
+
 #[tauri::command]
 async fn scan_screenshots(
     app: tauri::AppHandle,
@@ -504,6 +570,56 @@ async fn scan_screenshots(
     }).await.map_err(|e| e.to_string())?;
 
     Ok(entries)
+}
+
+#[tauri::command]
+async fn get_screenshot_base64_batch(
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<std::sync::Mutex<Base64Cache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(Base64Cache::new()));
+
+    let engine = base64::engine::general_purpose::STANDARD;
+
+    let results = tauri::async_runtime::spawn_blocking(move || {
+        let mut batch = Vec::new();
+        for path in &paths {
+            // Check cache first
+            {
+                let mut c = cache.lock().unwrap();
+                if let Some(cached) = c.get(path) {
+                    batch.push(cached.clone());
+                    continue;
+                }
+            }
+
+            // Read and encode
+            match std::fs::read(path) {
+                Ok(bytes) => {
+                    let size = bytes.len() as u64;
+                    let ext = std::path::Path::new(path)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("png")
+                        .to_lowercase();
+                    let b64 = engine.encode(&bytes);
+                    let data_uri = format!("data:image/{};base64,{}", ext, b64);
+
+                    {
+                        let mut c = cache.lock().unwrap();
+                        c.insert(path.clone(), data_uri.clone(), size);
+                    }
+
+                    batch.push(data_uri);
+                }
+                Err(_) => batch.push(String::new()),
+            }
+        }
+        batch
+    }).await.map_err(|e| e.to_string())?;
+
+    Ok(results)
 }
 
 // ==================== 配置持久化 ====================
@@ -2023,6 +2139,7 @@ fn main() {
             open_log_folder,
             read_today_logs,
             scan_screenshots,
+            get_screenshot_base64_batch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
