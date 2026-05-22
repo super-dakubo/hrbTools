@@ -220,7 +220,6 @@ struct ScreenshotEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
 struct DetectedSource {
     name: String,
     path: String,
@@ -528,10 +527,10 @@ async fn scan_screenshots(
     // Run blocking I/O on thread pool
     let entries = tauri::async_runtime::spawn_blocking(move || {
         let mut results = Vec::new();
-        let mut dirs: Vec<std::path::PathBuf> = vec![canonical.clone()];
+        let mut dirs: Vec<(std::path::PathBuf, u32)> = vec![(canonical.clone(), 0)];
         let mut visited = std::collections::HashSet::new();
 
-        while let Some(dir) = dirs.pop() {
+        while let Some((dir, depth)) = dirs.pop() {
             if results.len() >= 50 { break; }
             if !visited.insert(dir.clone()) { continue; }
 
@@ -540,9 +539,9 @@ async fn scan_screenshots(
                     let path = entry.path();
                     // Combine metadata calls: is_dir/is_file share one syscall
                     if let Ok(meta) = path.metadata() {
-                        if meta.is_dir() && dirs.len() < 3 {
-                            // Breadth limit: at most 3 subdirectories scanned concurrently
-                            dirs.push(path);
+                        if meta.is_dir() && depth < 2 {
+                            // Depth limit: at most 2 sub-directory levels from root
+                            dirs.push((path, depth + 1));
                         } else if meta.is_file() && is_image_file(&path) && results.len() < 50 {
                             if let Ok(modified) = meta.modified() {
                                 let datetime: chrono::DateTime<chrono::Local> = modified.into();
@@ -620,6 +619,310 @@ async fn get_screenshot_base64_batch(
     }).await.map_err(|e| e.to_string())?;
 
     Ok(results)
+}
+
+// ---- VDF Parser ----
+
+/// Skip whitespace and line comments in VDF format
+fn skip_vdf_whitespace(vdf: &str, pos: &mut usize) {
+    let bytes = vdf.as_bytes();
+    while *pos < bytes.len() {
+        match bytes[*pos] {
+            b' ' | b'\t' | b'\n' | b'\r' => *pos += 1,
+            b'/' if *pos + 1 < bytes.len() && bytes[*pos + 1] == b'/' => {
+                *pos += 2;
+                while *pos < bytes.len() && bytes[*pos] != b'\n' {
+                    *pos += 1;
+                }
+            }
+            _ => break,
+        }
+    }
+}
+
+/// Parse a quoted VDF string value
+fn parse_vdf_value(vdf: &str, pos: &mut usize) -> Option<String> {
+    skip_vdf_whitespace(vdf, pos);
+    let bytes = vdf.as_bytes();
+    if *pos >= bytes.len() || bytes[*pos] != b'"' {
+        return None;
+    }
+    *pos += 1;
+
+    let mut result = String::new();
+    while *pos < bytes.len() {
+        match bytes[*pos] {
+            b'"' => {
+                *pos += 1;
+                return Some(result);
+            }
+            b'\\' if *pos + 1 < bytes.len() => {
+                *pos += 1;
+                result.push(bytes[*pos] as char);
+                *pos += 1;
+            }
+            _ => {
+                result.push(bytes[*pos] as char);
+                *pos += 1;
+            }
+        }
+    }
+    None
+}
+
+/// Parse a VDF object block (everything between { and })
+fn parse_vdf_object(
+    vdf: &str,
+    pos: &mut usize,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    skip_vdf_whitespace(vdf, pos);
+    let bytes = vdf.as_bytes();
+    if *pos >= bytes.len() || bytes[*pos] != b'{' {
+        return None;
+    }
+    *pos += 1;
+
+    let mut map = serde_json::Map::new();
+
+    loop {
+        skip_vdf_whitespace(vdf, pos);
+        if *pos >= bytes.len() {
+            return None;
+        }
+        if bytes[*pos] == b'}' {
+            *pos += 1;
+            return Some(map);
+        }
+
+        let key = parse_vdf_value(vdf, pos)?;
+
+        skip_vdf_whitespace(vdf, pos);
+
+        if *pos < bytes.len() && bytes[*pos] == b'{' {
+            if let Some(obj) = parse_vdf_object(vdf, pos) {
+                map.insert(key, serde_json::Value::Object(obj));
+            }
+        } else if let Some(val) = parse_vdf_value(vdf, pos) {
+            map.insert(key, serde_json::Value::String(val));
+        }
+    }
+}
+
+/// Parse a VDF string into serde_json::Value
+fn parse_vdf(vdf: &str) -> serde_json::Value {
+    let mut pos = 0;
+    let mut map = serde_json::Map::new();
+
+    loop {
+        skip_vdf_whitespace(vdf, &mut pos);
+        if pos >= vdf.len() {
+            break;
+        }
+
+        if let Some(key) = parse_vdf_value(vdf, &mut pos) {
+            skip_vdf_whitespace(vdf, &mut pos);
+            if pos < vdf.len() && vdf.as_bytes()[pos] == b'{' {
+                if let Some(obj) = parse_vdf_object(vdf, &mut pos) {
+                    map.insert(key, serde_json::Value::Object(obj));
+                }
+            } else if let Some(val) = parse_vdf_value(vdf, &mut pos) {
+                map.insert(key, serde_json::Value::String(val));
+            }
+        } else {
+            break;
+        }
+    }
+
+    serde_json::Value::Object(map)
+}
+
+// ---- Steam Path Detection ----
+
+/// Detect Steam installation path using registry or common fallback locations
+fn detect_steam_path() -> Option<String> {
+    let output = std::process::Command::new("reg")
+        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if let Some(idx) = trimmed.find("REG_SZ") {
+                let value = trimmed[idx + 6..].trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: check common installation paths
+    let common_paths = [
+        r"C:\Program Files (x86)\Steam",
+        r"C:\Program Files\Steam",
+    ];
+
+    for path in &common_paths {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+
+    None
+}
+
+/// Get the user's Documents directory path
+fn get_documents_dir() -> String {
+    let userprofile =
+        std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\Default".to_string());
+    format!("{}\\Documents", userprofile)
+}
+
+/// Count image files in a directory (non-recursive)
+fn count_images_in_dir(dir: &std::path::Path) -> u32 {
+    let mut count = 0u32;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() && is_image_file(&entry.path()) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+/// Look up a Steam game name from app manifest in any library folder
+fn get_steam_game_name(
+    steam_path: &str,
+    app_id: &str,
+    extra_lib_paths: &[std::path::PathBuf],
+) -> Option<String> {
+    let mut search_paths = Vec::new();
+    search_paths.push(std::path::PathBuf::from(steam_path));
+    search_paths.extend_from_slice(extra_lib_paths);
+
+    for lib_path in &search_paths {
+        let manifest_path = lib_path.join("steamapps").join(format!("appmanifest_{}.acf", app_id));
+        if !manifest_path.is_file() {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+            let parsed = parse_vdf(&content);
+            if let Some(root) = parsed.as_object() {
+                if let Some(app_state) = root.get("AppState").and_then(|v| v.as_object()) {
+                    if let Some(name) = app_state.get("name").and_then(|v| v.as_str()) {
+                        if !name.is_empty() {
+                            return Some(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[tauri::command]
+async fn detect_screenshot_sources(_app: tauri::AppHandle) -> Result<Vec<DetectedSource>, String> {
+    let sources = tauri::async_runtime::spawn_blocking(move || {
+        let mut sources: Vec<DetectedSource> = Vec::new();
+        let documents = get_documents_dir();
+
+        // ---- Steam Screenshots ----
+        let steam_path = detect_steam_path();
+        if let Some(ref steam_path) = steam_path {
+            // Collect additional library paths from libraryfolders.vcf
+            let mut extra_lib_paths: Vec<std::path::PathBuf> = Vec::new();
+            let lf_path = std::path::Path::new(steam_path)
+                .join("steamapps")
+                .join("libraryfolders.vcf");
+            if lf_path.is_file() {
+                if let Ok(content) = std::fs::read_to_string(&lf_path) {
+                    let parsed = parse_vdf(&content);
+                    if let Some(top_obj) = parsed.as_object() {
+                        if let Some(lib_folders) =
+                            top_obj.get("libraryfolders").and_then(|v| v.as_object())
+                        {
+                            for (_key, val) in lib_folders {
+                                if let Some(obj) = val.as_object() {
+                                    if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
+                                        extra_lib_paths.push(std::path::PathBuf::from(path));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Scan userdata for screenshots
+            let userdata_dir = std::path::Path::new(steam_path).join("userdata");
+            if let Ok(user_entries) = std::fs::read_dir(&userdata_dir) {
+                for user_entry in user_entries.flatten() {
+                    let remote_dir = user_entry.path().join("760").join("remote");
+                    if !remote_dir.is_dir() {
+                        continue;
+                    }
+                    if let Ok(app_entries) = std::fs::read_dir(&remote_dir) {
+                        for app_entry in app_entries.flatten() {
+                            let screenshots_dir = app_entry.path().join("screenshots");
+                            if !screenshots_dir.is_dir() {
+                                continue;
+                            }
+
+                            let count = count_images_in_dir(&screenshots_dir);
+                            if count == 0 {
+                                continue;
+                            }
+
+                            let app_id =
+                                app_entry.file_name().to_string_lossy().to_string();
+                            let game_name =
+                                get_steam_game_name(steam_path, &app_id, &extra_lib_paths)
+                                    .unwrap_or_else(|| format!("App {}", app_id));
+
+                            sources.push(DetectedSource {
+                                name: game_name,
+                                path: screenshots_dir.to_string_lossy().to_string(),
+                                count,
+                                source_type: "steam".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Mihoyo Screenshots ----
+        let mihoyo_base = std::path::Path::new(&documents).join("HoYoverse");
+        let mihoyo_games: [(&str, &str, &str); 3] = [
+            ("Genshin Impact", "Genshin Impact", "ScreenShots"),
+            ("Star Rail", "Star Rail", "ScreenShots"),
+            ("ZZZ", "ZZZ", "ScreenShots"),
+        ];
+
+        for (display_name, subdir, screenshots_subdir) in &mihoyo_games {
+            let dir = mihoyo_base.join(subdir).join(screenshots_subdir);
+            if dir.is_dir() {
+                let count = count_images_in_dir(&dir);
+                sources.push(DetectedSource {
+                    name: display_name.to_string(),
+                    path: dir.to_string_lossy().to_string(),
+                    count,
+                    source_type: "mihoyo".to_string(),
+                });
+            }
+        }
+
+        sources
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(sources)
 }
 
 // ==================== 配置持久化 ====================
@@ -2140,6 +2443,7 @@ fn main() {
             read_today_logs,
             scan_screenshots,
             get_screenshot_base64_batch,
+            detect_screenshot_sources,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
