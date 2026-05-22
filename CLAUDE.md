@@ -52,10 +52,10 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| [src/index.html](src/index.html) | 210 | HTML 骨架 + 内联启动 IPC 脚本，5 面板 DOM（时间转换/备份/待办/日志/设置） |
-| [src/styles.css](src/styles.css) | ~1950 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
-| [src/main.js](src/main.js) | ~2860 | 全部前端逻辑，`// ===` 分隔 23+ 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | ~1910 | 全部 Rust 逻辑，13 个功能分区，28 个 Tauri 命令 |
+| [src/index.html](src/index.html) | 210 | HTML 骨架 + 内联启动 IPC 脚本，6 面板 DOM（时间转换/备份/待办/截图/日志/设置） |
+| [src/styles.css](src/styles.css) | ~2220 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
+| [src/main.js](src/main.js) | ~3360 | 全部前端逻辑，`// ===` 分隔 24+ 区块 + 事件委托 |
+| [src/main.rs](src/main.rs) | ~2530 | 全部 Rust 逻辑，14 个功能分区，35 个 Tauri 命令 |
 | [icons/](icons/) | — | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
 | [tools/gen_icon.py](tools/gen_icon.py) | 132 | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
 
@@ -89,13 +89,12 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 | 工具函数 | `=== 工具函数 ===` | `escapeHtml`, 时间格式化等 |
 | 节假日管理 | `=== 节假日管理 ===` | `renderHolidayYears`, `openHolidayEditor`, `parseAndPreviewHolidayJSON` |
 | 待办工具面板 | `=== 待办工具 ===` | `renderTodos`, `openTodoEditModal`, `toggleTodoDone` |
-| 事件委托 | `=== 事件委托 ===` | `setupEventDelegation`（一次性绑定，替代每次渲染后重新绑定监听器） |
 | 启动（init） | `=== 启动 ===` | `DOMContentLoaded` → rAF 分步初始化 |
+| 截图面板 | `=== 截图面板 ===` | `renderScreenshotPanel`/`renderToolbar`/`renderGrid`（分容器渲染），`openLightbox`/`closeLightbox` 灯箱浏览，`openAddSourceDialog` 添加来源对话框。缩略图 LRU 缓存（100 条/500MB，base64 data URI），骨架屏加载态 |
+| 事件委托 | `=== 事件委托（一次性设置，替代每次渲染后重新绑定） ===` | `setupEventDelegation`（一次性绑定，替代每次渲染后重新绑定监听器） |
 | 日志系统（IIFE + 面板渲染） | `=== 日志系统 ===` + `=== 日志面板渲染 ===` | `window.__log`, `renderLogPanel`, `bindLogPanelEvents` |
 
-**事件委托模式：** 所有子元素事件绑定必须放在 `setupEventDelegation()` 中，用 `e.target.closest('[data-action]')` 匹配。禁止在渲染函数中绑定事件或加单独的 `addEventListener`。这是整个前端的事件架构核心，覆盖游戏标签、存档位、文件标签、备份列表、待办列表的全部交互。旧代码中的 `bind*Events()` 函数（如 `bindTabEvents`）已经废弃，新增交互直接在 `setupEventDelegation` 中添加 handler。
-
-**异步操作锁模式：** 所有防止重复提交的锁变量必须用 try-finally 释放，不可在 catch 之后释放。超时和 IPC 响应竞态必须用 `settled` 守卫变量（谁先到谁执行，后到的检查 `settled` 后跳过）。现有实例：`_switchLock`、`_saveInProgress`、`_backupListLock`。
+**事件委托模式：** 所有子元素事件绑定必须放在 `setupEventDelegation()` 中，用 `e.target.closest('[data-action]')` 匹配。禁止在渲染函数中绑定事件或加单独的 `addEventListener`。这是整个前端的事件架构核心，覆盖游戏标签、存档位、文件标签、备份列表、待办列表的全部交互。
 
 **日志流水线：** `window.__log`（环形缓冲区 2000 条）→ IPC `log_write` → `%APPDATA%/com.hrbTools.app/logs/YYYY-MM-DD.log`（10MB 自动轮转）
 
@@ -144,6 +143,14 @@ JS syncPendingReminders() → pending_reminders
 - **滚动隔离** — modal 为 flex 容器，仅 `.todo-edit-body` 区域可滚动，header 固定顶部不参与滚动
 - **新建流程** — 点"添加待办"打开空弹窗，`autoSave` 首次保存时生成 `crypto.randomUUID()` 并写入配置
 
+### 弹窗共享基类
+
+所有弹窗（假期编辑、待办编辑、截图添加来源、文件恢复选择）复用统一的 CSS 基类：
+- `.dialog-overlay` — 全屏遮罩，flex 居中，玻璃透明背景，亮色模式自动切换
+- `.dialog-box` — 玻璃背景弹窗容器，`backdrop-filter: blur(20px)`，scaleIn 入场动画
+
+各弹窗只写差异覆盖，见 `docs/design-system.md` 第 6.3 节。HTML 使用：`<div class="todo-edit-overlay dialog-overlay">`。
+
 ### 后端（src/main.rs）
 
 - `tauri::command` 参数名必须用 **camelCase**，结构体字段必须用 **snake_case**（Tauri 宏 vs serde 差异）
@@ -190,7 +197,7 @@ JS syncPendingReminders() → pending_reminders
 
 ### 依赖
 
-`tauri = "2"`（tray-icon feature）、`serde`（derive）、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`
+`tauri = "2"`（tray-icon feature）、`serde`（derive）、`serde_json`、`chrono`（serde feature）、`rfd = "0.17"`、`md-5 = "0.10"`、`notify-rust = "4"`、`base64 = "0.22"`
 
 **Rust edition** `= "2024"`（Cargo.toml），注意此版本的新语法和语义变化。
 

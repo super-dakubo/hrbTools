@@ -969,7 +969,7 @@ function showRestoreFileModal(files, folderName) {
 
     const overlay = document.createElement('div');
     overlay.id = 'restoreOverlay';
-    overlay.className = 'modal-overlay';
+    overlay.className = 'modal-overlay dialog-overlay';
     overlay.style.display = 'flex';
     overlay.innerHTML = '<div class="modal" style="width:420px;">'
         + '<div class="modal-header">'
@@ -2046,8 +2046,8 @@ function openTodoEditModal(id) {
     }
 
     var overlay = document.createElement('div');
-    overlay.className = 'todo-edit-overlay';
-    overlay.innerHTML = '<div class="todo-edit-modal">'
+    overlay.className = 'todo-edit-overlay dialog-overlay';
+    overlay.innerHTML = '<div class="todo-edit-modal dialog-box">'
         + '<div class="todo-edit-header">'
             + '<div class="todo-edit-title">' + (isNew ? '新建待办' : '编辑待办') + '</div>'
             + '<button class="todo-edit-close" id="editCloseBtn">&#x2715;</button>'
@@ -2466,37 +2466,43 @@ function renderScreenshotPanel() {
     var currentSource = _ssSources.find(function(s) { return s.id === _ssCurrentSourceId; });
     if (!currentSource) { wrapper.innerHTML = ''; return; }
 
+    // Build toolbar + content containers on first render
+    var toolbar = wrapper.querySelector('#ssToolbar');
+    if (!toolbar) {
+        wrapper.innerHTML = '<div id="ssToolbar"></div><div id="ssContent"></div>';
+    }
+
+    // Re-render toolbar only when sources list changed (add/remove) vs just switching
+    var needsToolbarRender = !toolbar || toolbar.querySelectorAll('option').length !== _ssSources.length;
+    if (needsToolbarRender) {
+        renderToolbar();
+    } else {
+        var select = toolbar.querySelector('select');
+        if (select) select.value = _ssCurrentSourceId;
+    }
+
     // Check cache (30 second TTL)
     var cached = _ssCache[_ssCurrentSourceId];
     var now = Date.now();
     if (!cached || now - cached.fetchedAt > 30000) {
-        renderSkeleton(wrapper);
+        renderSkeleton();
         scanScreenshots(currentSource);
         return;
     }
 
     _ssEntries = cached.entries;
-    renderGridView(wrapper, currentSource);
-}
-
-function renderSkeleton(wrapper) {
-    var cards = '';
-    for (var i = 0; i < 6; i++) {
-        cards += '<div class="ss-card ss-skeleton"><div class="ss-thumb-placeholder"></div><div class="ss-info"></div></div>';
-    }
-    wrapper.innerHTML = ''
-        + renderToolbar()
-        + '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
+    renderGrid();
 }
 
 function renderToolbar() {
+    var toolbar = document.getElementById('ssToolbar');
+    if (!toolbar) return;
     var options = _ssSources.map(function(s) {
         var selected = s.id === _ssCurrentSourceId ? ' selected' : '';
-        var label = s.name;
-        return '<option value="' + s.id + '"' + selected + '>' + escapeHtml(label) + '</option>';
+        return '<option value="' + s.id + '"' + selected + '>' + escapeHtml(s.name) + '</option>';
     }).join('');
 
-    return '<div class="ss-toolbar">'
+    toolbar.innerHTML = '<div class="ss-toolbar">'
         + '<select data-action="ss-select-source">' + options + '</select>'
         + '<input type="search" placeholder="搜索截图文件名..." value="' + escapeHtml(_ssSearchQuery) + '" data-action="ss-search">'
         + '<button class="btn btn-primary" data-action="ss-add-source">+ 添加</button>'
@@ -2504,7 +2510,20 @@ function renderToolbar() {
         + '</div>';
 }
 
-function renderGridView(wrapper, currentSource) {
+function renderSkeleton() {
+    var content = document.getElementById('ssContent');
+    if (!content) return;
+    var cards = '';
+    for (var i = 0; i < 6; i++) {
+        cards += '<div class="ss-card ss-skeleton"><div class="ss-thumb-placeholder"></div><div class="ss-info"></div></div>';
+    }
+    content.innerHTML = '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
+}
+
+function renderGrid() {
+    var content = document.getElementById('ssContent');
+    if (!content) return;
+
     // Filter by search query
     var filtered = _ssEntries;
     if (_ssSearchQuery) {
@@ -2526,10 +2545,9 @@ function renderGridView(wrapper, currentSource) {
         + '<button class="btn-small" data-action="ss-next-page"' + (_ssPage >= totalPages - 1 ? ' disabled' : '') + '>下一页 ›</button>'
         + '</div>';
 
-    // Grid cards
+    // No matches
     if (pageItems.length === 0) {
-        wrapper.innerHTML = renderToolbar() + paginationHtml
-            + '<div class="ss-empty"><p>没有找到匹配的截图</p></div>';
+        content.innerHTML = paginationHtml + '<div class="ss-empty"><p>没有找到匹配的截图</p></div>';
         return;
     }
 
@@ -2540,7 +2558,7 @@ function renderGridView(wrapper, currentSource) {
             : '';
         return '<div class="ss-card" data-action="ss-open" data-index="' + absIdx + '">'
             + tagHtml
-            + '<div class="ss-thumb-placeholder">⏳</div>'
+            + '<div class="ss-thumb-wrap"><div class="ss-thumb-placeholder">⏳</div></div>'
             + '<div class="ss-hover-actions">'
             + '<button class="ss-folder" data-action="ss-open-folder" data-path="' + escapeHtml(entry.path) + '" title="打开所在文件夹">📂</button>'
             + '<button class="ss-del" data-action="ss-delete-file" data-path="' + escapeHtml(entry.path) + '" data-name="' + escapeHtml(entry.file_name) + '" title="删除">🗑</button>'
@@ -2552,11 +2570,10 @@ function renderGridView(wrapper, currentSource) {
             + '</div>';
     }).join('');
 
-    wrapper.innerHTML = renderToolbar() + paginationHtml
-        + '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
+    content.innerHTML = paginationHtml + '<div class="ss-grid-container"><div class="ss-grid">' + cards + '</div></div>';
 
     // Load thumbnails after rendering
-    loadThumbnails(pageItems, wrapper, start);
+    loadThumbnails(pageItems, content, start);
 }
 
 function loadThumbnails(pageItems, wrapper, start) {
@@ -2566,7 +2583,9 @@ function loadThumbnails(pageItems, wrapper, start) {
         dataUris.forEach(function(uri, i) {
             var card = cards[i];
             if (!card || !uri) return;
-            var placeholder = card.querySelector('.ss-thumb-placeholder');
+            var wrap = card.querySelector('.ss-thumb-wrap');
+            if (!wrap) return;
+            var placeholder = wrap.querySelector('.ss-thumb-placeholder');
             if (placeholder) {
                 var img = document.createElement('img');
                 img.className = 'ss-thumb';
@@ -2574,7 +2593,9 @@ function loadThumbnails(pageItems, wrapper, start) {
                 img.decoding = 'async';
                 img.loading = 'lazy';
                 img.alt = pageItems[i].file_name;
-                placeholder.parentNode.replaceChild(img, placeholder);
+                img.addEventListener('load', function() { this.classList.add('loaded'); });
+                if (img.complete) img.classList.add('loaded');
+                wrap.replaceChild(img, placeholder);
             }
         });
     });
@@ -2589,13 +2610,17 @@ function scanScreenshots(source) {
         _ssCache[_ssCurrentSourceId] = { entries: entries, fetchedAt: Date.now() };
         _ssEntries = entries;
         _ssPage = 0;
-        var wrapper = document.getElementById('screenshotApp');
-        if (wrapper) renderGridView(wrapper, source);
+        renderGrid();
     }).catch(function() {
         var wrapper = document.getElementById('screenshotApp');
         if (wrapper) {
-            wrapper.innerHTML = renderToolbar()
-                + '<div class="ss-empty"><p>⚠️ 无法读取目录，请检查路径是否存在</p></div>';
+            var toolbar = wrapper.querySelector('#ssToolbar');
+            if (!toolbar) {
+                wrapper.innerHTML = '<div id="ssToolbar"></div><div id="ssContent"></div>';
+            }
+            renderToolbar();
+            var content = document.getElementById('ssContent');
+            if (content) content.innerHTML = '<div class="ss-empty"><p>⚠️ 无法读取目录，请检查路径是否存在</p></div>';
         }
     });
 }
@@ -2639,6 +2664,9 @@ function openLightbox(index) {
     invoke('get_screenshot_base64_batch', { paths: [entry.path] }).then(function(dataUris) {
         if (dataUris[0]) {
             img.src = dataUris[0];
+            img.classList.remove('loaded');
+            img.addEventListener('load', function() { this.classList.add('loaded'); }, { once: true });
+            if (img.complete) img.classList.add('loaded');
             img.style.display = '';
         }
     });
@@ -2675,25 +2703,40 @@ function openAddSourceDialog() {
 
     var dialog = document.createElement('div');
     dialog.id = 'ssAddDialog';
-    dialog.className = 'ss-add-dialog';
-    dialog.innerHTML = '<div class="ss-dialog-box">'
-        + '<h3>添加截图来源</h3>'
-        + '<div class="ss-dialog-section">'
-        + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">自定义文件夹</p>'
-        + '<button class="btn btn-primary" id="ssBrowseFolderBtn">📁 浏览...</button>'
+    dialog.className = 'ss-add-dialog dialog-overlay';
+    dialog.innerHTML = '<div class="ss-dialog-box dialog-box">'
+        + '<div class="ss-dialog-header">'
+            + '<span class="ss-dialog-header-icon">📁</span>'
+            + '<span class="ss-dialog-header-title">添加截图来源</span>'
+            + '<button class="ss-dialog-header-close" id="ssCloseBtn">&times;</button>'
         + '</div>'
-        + '<div class="ss-dialog-section" id="ssDetectedSection">'
-        + '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">快速添加 — 正在检测...</p>'
+        + '<div class="ss-dialog-card">'
+            + '<div class="ss-dialog-card-hd">✏️ 手动添加</div>'
+            + '<div class="ss-dialog-field">'
+                + '<label>来源名称 <span class="ss-field-opt">可选</span></label>'
+                + '<input type="text" id="ssSourceNameInput" placeholder="留空则使用文件夹名...">'
+            + '</div>'
+            + '<button class="btn btn-primary" id="ssBrowseBtn" style="margin-top:2px">📁 选择文件夹</button>'
         + '</div>'
-        + '<div style="text-align:right">'
-        + '<button class="btn btn-ghost" id="ssCancelDialogBtn">取消</button>'
+        + '<div class="ss-dialog-divider"><span>或</span></div>'
+        + '<div class="ss-dialog-card" id="ssDetectedSection">'
+            + '<div class="ss-dialog-card-hd">🔍 快速添加</div>'
+            + '<div id="ssDetectedBody"><p class="ss-dialog-muted">正在检测...</p></div>'
         + '</div>'
-        + '</div>';
+        + '<div class="ss-dialog-actions">'
+            + '<button class="btn btn-ghost" id="ssCancelBtn">取消</button>'
+        + '</div>'
+    + '</div>';
 
-    dialog.querySelector('#ssBrowseFolderBtn').addEventListener('click', function() {
+    dialog.querySelector('#ssCloseBtn').addEventListener('click', function() { dialog.classList.remove('open'); });
+    dialog.querySelector('#ssCancelBtn').addEventListener('click', function() { dialog.classList.remove('open'); });
+
+    dialog.querySelector('#ssBrowseBtn').addEventListener('click', function() {
+        var nameInput = document.getElementById('ssSourceNameInput');
+        var customName = nameInput ? nameInput.value.trim() : '';
         invoke('pick_directory').then(function(dir) {
             if (dir) {
-                var name = dir.split(/[/\\]/).pop() || '截图';
+                var name = customName || (dir.split(/[/\\]/).pop() || '截图');
                 invoke('add_screenshot_source', { name: name, path: dir, gameId: null }).then(function(res) {
                     if (res.success) {
                         refreshScreenshotConfig();
@@ -2706,10 +2749,6 @@ function openAddSourceDialog() {
         });
     });
 
-    dialog.querySelector('#ssCancelDialogBtn').addEventListener('click', function() {
-        dialog.classList.remove('open');
-    });
-
     dialog.addEventListener('click', function(e) {
         if (e.target === dialog) dialog.classList.remove('open');
     });
@@ -2718,14 +2757,14 @@ function openAddSourceDialog() {
     dialog.classList.add('open');
 
     invoke('detect_screenshot_sources').then(function(sources) {
-        var section = document.getElementById('ssDetectedSection');
-        if (!section) return;
+        var body = document.getElementById('ssDetectedBody');
+        if (!body) return;
         if (!sources || sources.length === 0) {
-            section.innerHTML = '<p style="font-size:13px;color:var(--text-secondary)">未检测到已知截图来源，请使用浏览按钮手动添加</p>';
+            body.innerHTML = '<p class="ss-dialog-muted">未检测到已知截图来源，请使用浏览按钮手动添加</p>';
             return;
         }
 
-        var html = '<p style="margin-bottom:8px;font-size:13px;color:var(--text-secondary)">检测到以下来源：</p>';
+        var html = '<div class="ss-detect-list">';
         sources.forEach(function(s, i) {
             html += '<label class="ss-detected-item">'
                 + '<input type="checkbox" class="ss-source-checkbox" data-index="' + i + '" checked>'
@@ -2733,20 +2772,21 @@ function openAddSourceDialog() {
                 + '<span class="ss-count">' + s.count + ' 张</span>'
                 + '</label>';
         });
+        html += '</div>';
 
         window._ssDetectedSources = sources;
 
-        html += '<div style="margin-top:12px"><button class="btn btn-primary" id="ssAddDetectedBtn">添加所选</button></div>';
-        section.innerHTML = html;
+        html += '<button class="btn btn-primary" id="ssAddDetectedBtn" style="margin-top:10px">添加所选</button>';
+        body.innerHTML = html;
 
         var addBtn = document.getElementById('ssAddDetectedBtn');
         if (addBtn) {
             addBtn.addEventListener('click', function() { addDetectedSources(dialog); });
         }
     }).catch(function() {
-        var section = document.getElementById('ssDetectedSection');
-        if (section) {
-            section.innerHTML = '<p style="font-size:13px;color:var(--text-secondary)">检测失败，请使用浏览按钮手动添加</p>';
+        var body = document.getElementById('ssDetectedBody');
+        if (body) {
+            body.innerHTML = '<p class="ss-dialog-muted">检测失败，请使用浏览按钮手动添加</p>';
         }
     });
 }

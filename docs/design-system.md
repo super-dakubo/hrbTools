@@ -159,10 +159,24 @@ window.matchMedia('(prefers-color-scheme: dark)')
 
 ### 模态弹窗
 
-- 遮罩：`position: absolute; inset: 0; background: rgba(0,0,0,0.6)`
-- 弹窗：`background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl)`
-- 标题：`font-size: var(--font-md); font-weight: 600`
-- 关闭按钮：透明底，hover 变亮
+所有弹窗复用统一的 base class，减少重复和透明显式不一致。
+
+**Base classes：**（`styles.css:1195`）
+- `.dialog-overlay` — 全屏遮罩：`position: fixed; inset: 0; background: rgba(0,0,0,0.5)`，flex 居中，`z-index: 100`，fadeIn 动画。亮色模式下自动切换为 `rgba(255,255,255,0.35) + backdrop-filter: blur(4px)`
+- `.dialog-box` — 弹窗容器：玻璃背景 `var(--glass-bg)`，`border: 1px solid var(--glass-border)`，`box-shadow`，`backdrop-filter: blur(20px)`，scaleIn 动画
+
+**各弹窗覆盖（只写差异，不重复 base 属性）：**
+
+| 弹窗 | 覆盖类 | 特有属性 |
+| --- | --- | --- |
+| 假期编辑 | `.modal-overlay` + `.modal` | `position: absolute; padding-top: 80px`（局部遮罩）、`width: 420px; overflow: hidden` |
+| 待办编辑 | `.todo-edit-overlay` + `.todo-edit-modal` | `z-index: 100`、`width: 560px; max-height: 90vh; display: flex; flex-direction: column` |
+| 截图添加来源 | `.ss-add-dialog` + `.ss-dialog-box` | `z-index: 999`、`padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto` |
+| 恢复文件选择 | `.modal-overlay` + `.modal` | 运行时动态创建，复用假期编辑的覆盖类 |
+
+HTML 添加方式：`<div class="todo-edit-overlay dialog-overlay">` + `<div class="todo-edit-modal dialog-box">`
+
+**关闭按钮：** 透明底，hover 变亮
 
 ---
 

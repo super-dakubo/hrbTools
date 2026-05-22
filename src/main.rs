@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Write, BufReader, BufWriter, Read};
 use std::path::PathBuf;
-use std::time::Instant;
 use base64::Engine;
 use tauri::Manager;
 use md5::{Md5, Digest};
@@ -441,7 +440,6 @@ fn is_image_file(path: &std::path::Path) -> bool {
 
 struct Base64CacheEntry {
     data: String,
-    fetched_at: Instant,
     size: u64,
 }
 
@@ -492,7 +490,6 @@ impl Base64Cache {
 
         let entry = Base64CacheEntry {
             data: data.clone(),
-            fetched_at: Instant::now(),
             size,
         };
         self.current_bytes += size;
