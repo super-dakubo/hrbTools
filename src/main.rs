@@ -623,15 +623,14 @@ async fn get_screenshot_base64_batch(
 
 // ---- VDF Parser ----
 
-/// Skip whitespace and line comments in VDF format
-fn skip_vdf_whitespace(vdf: &str, pos: &mut usize) {
-    let bytes = vdf.as_bytes();
-    while *pos < bytes.len() {
-        match bytes[*pos] {
-            b' ' | b'\t' | b'\n' | b'\r' => *pos += 1,
-            b'/' if *pos + 1 < bytes.len() && bytes[*pos + 1] == b'/' => {
+/// Skip whitespace and line comments in VDF format (char-indexed, UTF-8 safe)
+fn skip_vdf_whitespace(chars: &[char], pos: &mut usize) {
+    while *pos < chars.len() {
+        match chars[*pos] {
+            ' ' | '\t' | '\n' | '\r' => *pos += 1,
+            '/' if *pos + 1 < chars.len() && chars[*pos + 1] == '/' => {
                 *pos += 2;
-                while *pos < bytes.len() && bytes[*pos] != b'\n' {
+                while *pos < chars.len() && chars[*pos] != '\n' {
                     *pos += 1;
                 }
             }
@@ -640,29 +639,28 @@ fn skip_vdf_whitespace(vdf: &str, pos: &mut usize) {
     }
 }
 
-/// Parse a quoted VDF string value
-fn parse_vdf_value(vdf: &str, pos: &mut usize) -> Option<String> {
-    skip_vdf_whitespace(vdf, pos);
-    let bytes = vdf.as_bytes();
-    if *pos >= bytes.len() || bytes[*pos] != b'"' {
+/// Parse a quoted VDF string value (char-indexed, UTF-8 safe)
+fn parse_vdf_value(chars: &[char], pos: &mut usize) -> Option<String> {
+    skip_vdf_whitespace(chars, pos);
+    if *pos >= chars.len() || chars[*pos] != '"' {
         return None;
     }
     *pos += 1;
 
     let mut result = String::new();
-    while *pos < bytes.len() {
-        match bytes[*pos] {
-            b'"' => {
+    while *pos < chars.len() {
+        match chars[*pos] {
+            '"' => {
                 *pos += 1;
                 return Some(result);
             }
-            b'\\' if *pos + 1 < bytes.len() => {
+            '\\' if *pos + 1 < chars.len() => {
                 *pos += 1;
-                result.push(bytes[*pos] as char);
+                result.push(chars[*pos]);
                 *pos += 1;
             }
-            _ => {
-                result.push(bytes[*pos] as char);
+            c => {
+                result.push(c);
                 *pos += 1;
             }
         }
@@ -670,14 +668,13 @@ fn parse_vdf_value(vdf: &str, pos: &mut usize) -> Option<String> {
     None
 }
 
-/// Parse a VDF object block (everything between { and })
+/// Parse a VDF object block (char-indexed, UTF-8 safe)
 fn parse_vdf_object(
-    vdf: &str,
+    chars: &[char],
     pos: &mut usize,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
-    skip_vdf_whitespace(vdf, pos);
-    let bytes = vdf.as_bytes();
-    if *pos >= bytes.len() || bytes[*pos] != b'{' {
+    skip_vdf_whitespace(chars, pos);
+    if *pos >= chars.len() || chars[*pos] != '{' {
         return None;
     }
     *pos += 1;
@@ -685,47 +682,48 @@ fn parse_vdf_object(
     let mut map = serde_json::Map::new();
 
     loop {
-        skip_vdf_whitespace(vdf, pos);
-        if *pos >= bytes.len() {
+        skip_vdf_whitespace(chars, pos);
+        if *pos >= chars.len() {
             return None;
         }
-        if bytes[*pos] == b'}' {
+        if chars[*pos] == '}' {
             *pos += 1;
             return Some(map);
         }
 
-        let key = parse_vdf_value(vdf, pos)?;
+        let key = parse_vdf_value(chars, pos)?;
 
-        skip_vdf_whitespace(vdf, pos);
+        skip_vdf_whitespace(chars, pos);
 
-        if *pos < bytes.len() && bytes[*pos] == b'{' {
-            if let Some(obj) = parse_vdf_object(vdf, pos) {
+        if *pos < chars.len() && chars[*pos] == '{' {
+            if let Some(obj) = parse_vdf_object(chars, pos) {
                 map.insert(key, serde_json::Value::Object(obj));
             }
-        } else if let Some(val) = parse_vdf_value(vdf, pos) {
+        } else if let Some(val) = parse_vdf_value(chars, pos) {
             map.insert(key, serde_json::Value::String(val));
         }
     }
 }
 
-/// Parse a VDF string into serde_json::Value
+/// Parse a VDF string into serde_json::Value (UTF-8 safe via char-indexed parser)
 fn parse_vdf(vdf: &str) -> serde_json::Value {
+    let chars: Vec<char> = vdf.chars().collect();
     let mut pos = 0;
     let mut map = serde_json::Map::new();
 
     loop {
-        skip_vdf_whitespace(vdf, &mut pos);
-        if pos >= vdf.len() {
+        skip_vdf_whitespace(&chars, &mut pos);
+        if pos >= chars.len() {
             break;
         }
 
-        if let Some(key) = parse_vdf_value(vdf, &mut pos) {
-            skip_vdf_whitespace(vdf, &mut pos);
-            if pos < vdf.len() && vdf.as_bytes()[pos] == b'{' {
-                if let Some(obj) = parse_vdf_object(vdf, &mut pos) {
+        if let Some(key) = parse_vdf_value(&chars, &mut pos) {
+            skip_vdf_whitespace(&chars, &mut pos);
+            if pos < chars.len() && chars[pos] == '{' {
+                if let Some(obj) = parse_vdf_object(&chars, &mut pos) {
                     map.insert(key, serde_json::Value::Object(obj));
                 }
-            } else if let Some(val) = parse_vdf_value(vdf, &mut pos) {
+            } else if let Some(val) = parse_vdf_value(&chars, &mut pos) {
                 map.insert(key, serde_json::Value::String(val));
             }
         } else {
@@ -908,12 +906,14 @@ async fn detect_screenshot_sources(_app: tauri::AppHandle) -> Result<Vec<Detecte
             let dir = mihoyo_base.join(subdir).join(screenshots_subdir);
             if dir.is_dir() {
                 let count = count_images_in_dir(&dir);
-                sources.push(DetectedSource {
-                    name: display_name.to_string(),
-                    path: dir.to_string_lossy().to_string(),
-                    count,
-                    source_type: "mihoyo".to_string(),
-                });
+                if count > 0 {
+                    sources.push(DetectedSource {
+                        name: display_name.to_string(),
+                        path: dir.to_string_lossy().to_string(),
+                        count,
+                        source_type: "mihoyo".to_string(),
+                    });
+                }
             }
         }
 
