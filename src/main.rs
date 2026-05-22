@@ -1,4 +1,5 @@
-// 防止 Windows 上 Release 模式出现额外控制台窗口
+// @Setup Tauri 2.0 桌面应用后端入口（仅 Windows 无边框窗口）
+// @see src/main.js 前端 IPC 调用方
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use chrono::{NaiveDateTime, DateTime, Utc, TimeZone};
@@ -18,6 +19,8 @@ unsafe extern "system" {
 
 // ==================== 时区工具 ====================
 
+// @Service 解析时区名称为固定偏移（含 DST 自动切换）
+// 替代 chrono-tz 依赖节省 2-3MB，手动维护 7 个常用时区的 DST 规则
 /// 解析时区名称为固定偏移（含 DST 支持）
 fn resolve_timezone(tz_name: &str) -> Option<chrono::FixedOffset> {
     use chrono::FixedOffset;
@@ -54,6 +57,7 @@ fn resolve_timezone(tz_name: &str) -> Option<chrono::FixedOffset> {
     }
 }
 
+// @Utils 计算某月第 N 个星期日（DST 切换日期计算用）
 /// 计算某月第 N 个星期日（n 从 1 开始）
 fn nth_sunday_of_month(year: i32, month: u32, n: u32) -> chrono::NaiveDate {
     let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).expect("valid date");
@@ -62,6 +66,7 @@ fn nth_sunday_of_month(year: i32, month: u32, n: u32) -> chrono::NaiveDate {
     chrono::NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
 }
 
+// @Utils 计算某月最后一个星期日（英国 DST 切换用）
 /// 计算某月最后一个星期日
 fn last_sunday_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
@@ -70,12 +75,14 @@ fn last_sunday_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     last_day.pred_opt().expect("non-min date").checked_sub_days(chrono::Days::new(dow as u64)).expect("valid date")
 }
 
+// @Utils 计算某月的最后一天（月末模式提醒用）
 /// 计算某月的最后一天
 fn last_day_of_month(year: i32, month: u32) -> chrono::NaiveDate {
     let (next_y, next_m) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
     chrono::NaiveDate::from_ymd_opt(next_y, next_m, 1).expect("valid date").pred_opt().expect("non-min date")
 }
 
+// @Entity 时间→时间戳转换请求/响应体
 #[derive(Debug, Serialize, Deserialize)]
 struct ConvertRequest {
     datetime_str: String,
@@ -90,6 +97,7 @@ struct ConvertResponse {
 }
 
 // 反向转换：时间戳 → 时间字符串
+// @Entity 时间戳→时间转换请求/响应体
 #[derive(Debug, Serialize, Deserialize)]
 struct TimestampRequest {
     timestamp_ms: i64,
@@ -105,6 +113,7 @@ struct DatetimeResponse {
 
 // ==================== 配置 ====================
 
+// @Entity 存档位配置：文件列表、备份序号、关键文件匹配模式
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct SlotConfig {
     id: String,
@@ -119,6 +128,8 @@ struct SlotConfig {
 
 fn default_next_backup_number() -> u32 { 1 }
 
+// @Entity 游戏实体，ID 不可变（目录路径由 ID 构建，支持改名）
+// @see id-based-entities skill
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct GameConfig {
     id: String,
@@ -131,6 +142,7 @@ struct GameConfig {
 
 // ==================== 时区转换套件 ====================
 
+// @Entity 时区套件：包含时区、格式、置顶与排序
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct TimezoneSet {
     id: String,              // "beijing" or UUID
@@ -162,6 +174,8 @@ fn default_timezone_sets() -> Vec<TimezoneSet> {
     ]
 }
 
+// @Entity 应用配置根结构，对应 config.json 完整 schema
+// 修改字段时需同步前端 currentConfig 访问路径
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct AppConfig {
     #[serde(default)]
@@ -192,6 +206,7 @@ struct AppConfig {
     pending_reminders: Vec<PendingReminder>,
 }
 
+// @Entity 截图来源/条目/自动检测结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ScreenshotSource {
     #[serde(default)]
@@ -255,6 +270,8 @@ impl Default for AppConfig {
 }
 
 // ==================== 待办数据结构 ====================
+
+// @Entity 待办/提醒/横幅数据结构
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct TodoItem {
@@ -349,6 +366,8 @@ struct HolidayPeriod {
 
 // ==================== 节假日判定 ====================
 
+// @Service 节假日判定：补班日优先 → 假期段 → 周末兜底
+// JS 端 getDayType() 保持独立实现，修改需同步两端
 fn get_day_type(date: &chrono::NaiveDate, holiday: Option<&HolidayYearConfig>) -> &'static str {
     let mmdd = format!("{:02}{:02}", date.month(), date.day());
     let weekday = date.weekday().num_days_from_monday(); // 0=Mon..6=Sun
@@ -380,6 +399,8 @@ fn get_day_type(date: &chrono::NaiveDate, holiday: Option<&HolidayYearConfig>) -
 
 // ==================== 备份信息 ====================
 
+// @Entity 备份元数据，对应 meta.json 序列化结构
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BackupInfo {
     folder_name: String,
@@ -392,18 +413,21 @@ struct BackupInfo {
 
 // ==================== 操作结果 ====================
 
+// @Entity 写操作统一响应体 { success, message }
 #[derive(Debug, Serialize, Deserialize)]
 struct OpResult {
     success: bool,
     message: String,
 }
 
+// @Entity 恢复文件选择时的文件信息
 #[derive(Debug, Serialize, Deserialize)]
 struct FileInfo {
     name: String,
     original_path: String,
 }
 
+// @Entity 恢复操作响应体（含多文件选择、备份确认状态）
 #[derive(Debug, Serialize, Deserialize)]
 struct RestoreResult {
     success: bool,
@@ -415,6 +439,7 @@ struct RestoreResult {
 }
 
 /// 校验路径组件，防止目录遍历
+// @Utils 路径安全校验：阻止 ..、/、\\ 等目录穿越字符
 fn sanitize_path_component(name: &str) -> Result<String, OpResult> {
     if name.contains("..") || name.contains('/') || name.contains('\\') {
         return Err(OpResult {
@@ -429,6 +454,7 @@ fn sanitize_path_component(name: &str) -> Result<String, OpResult> {
 
 const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
+// @Utils 检测文件是否为支持的图片格式（png/jpg/webp/bmp/gif）
 fn is_image_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -437,6 +463,8 @@ fn is_image_file(path: &std::path::Path) -> bool {
 }
 
 // ---- LRU Cache for screenshots base64 ----
+
+// @Entity LRU 图片缓存：100 条目 / 500MB，Mutex + OnceLock 全局单例
 
 struct Base64CacheEntry {
     data: String,
@@ -499,6 +527,8 @@ impl Base64Cache {
 }
 
 #[tauri::command]
+// @Endpoint 递归扫描截图目录（最多 2 层/50 张），按修改时间倒序
+// 安全校验：canonicalize 防路径穿越 + source_id 授权检查
 async fn scan_screenshots(
     app: tauri::AppHandle,
     source_path: String,
@@ -569,6 +599,7 @@ async fn scan_screenshots(
 }
 
 #[tauri::command]
+// @Endpoint 批量读取截图 → base64 data URI，LRU 缓存加速
 async fn get_screenshot_base64_batch(
     paths: Vec<String>,
 ) -> Result<Vec<String>, String> {
@@ -619,6 +650,8 @@ async fn get_screenshot_base64_batch(
 }
 
 // ---- VDF Parser ----
+
+// @Utils Steam VDF 格式解析器（char-indexed UTF-8 安全）
 
 /// Skip whitespace and line comments in VDF format (char-indexed, UTF-8 safe)
 fn skip_vdf_whitespace(chars: &[char], pos: &mut usize) {
@@ -788,6 +821,8 @@ fn count_images_in_dir(dir: &std::path::Path) -> u32 {
     count
 }
 
+// @Utils 从 Steam appmanifest.acf 中查找游戏名称
+
 /// Look up a Steam game name from app manifest in any library folder
 fn get_steam_game_name(
     steam_path: &str,
@@ -820,6 +855,7 @@ fn get_steam_game_name(
     None
 }
 
+// @Endpoint 自动检测 Steam + 米哈游系列截图目录
 #[tauri::command]
 async fn detect_screenshot_sources(_app: tauri::AppHandle) -> Result<Vec<DetectedSource>, String> {
     let sources = tauri::async_runtime::spawn_blocking(move || {
@@ -924,6 +960,7 @@ async fn detect_screenshot_sources(_app: tauri::AppHandle) -> Result<Vec<Detecte
 
 // ---- UUID v4 Helper ----
 
+// @Utils 基于时间戳的 UUID v4 生成器
 fn uuid_v4() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -941,6 +978,7 @@ fn uuid_v4() -> String {
 
 // ---- Screenshot CRUD Commands ----
 
+// @Endpoint 添加截图来源目录
 #[tauri::command]
 fn add_screenshot_source(
     app: tauri::AppHandle,
@@ -948,6 +986,7 @@ fn add_screenshot_source(
     path: String,
     game_id: Option<String>,
 ) -> OpResult {
+    log_info(&app, &format!("add_screenshot_source: name={}, path={}", name, path));
     let p = std::path::Path::new(&path);
     if !p.exists() {
         return OpResult { success: false, message: "路径不存在".to_string() };
@@ -969,6 +1008,7 @@ fn add_screenshot_source(
     OpResult { success: true, message: "截图来源已添加".to_string() }
 }
 
+// @Endpoint 删除截图来源
 #[tauri::command]
 fn remove_screenshot_source(
     app: tauri::AppHandle,
@@ -984,10 +1024,13 @@ fn remove_screenshot_source(
     OpResult { success: true, message: "截图来源已移除".to_string() }
 }
 
+// @Endpoint 删除截图文件（canonicalize 防路径穿越）
 #[tauri::command]
 fn delete_screenshot(
+    app: tauri::AppHandle,
     path: String,
 ) -> OpResult {
+    log_info(&app, &format!("delete_screenshot: path={}", path));
     let p = std::path::Path::new(&path);
     let canonical = match p.canonicalize() {
         Ok(c) => c,
@@ -1001,6 +1044,7 @@ fn delete_screenshot(
 
 // ==================== 配置持久化 ====================
 
+// @Repository 获取 config.json 路径（app_data_dir 下）
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
     app.path()
         .app_data_dir()
@@ -1008,13 +1052,22 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
         .join("config.json")
 }
 
+// @Repository 读取并解析 config.json，含旧格式迁移
+// 安全写入：先写 .tmp → rename 原子替换，写入前备份 .bak
 fn load_config(app: &tauri::AppHandle) -> AppConfig {
     let path = config_path(app);
     if path.exists() {
         match fs::read_to_string(&path) {
             Ok(json) => {
                 let raw: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
-                let mut config: AppConfig = serde_json::from_value(raw.clone()).unwrap_or_default();
+                let config_result = serde_json::from_value(raw.clone());
+                let mut config: AppConfig = match config_result {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log_error(app, &format!("Config parse error: {}", e));
+                        AppConfig::default()
+                    }
+                };
                 // 迁移旧格式: file_path (String) → file_paths (Vec)
                 if let Some(games) = raw["games"].as_array() {
                     for (i, game) in games.iter().enumerate() {
@@ -1062,12 +1115,17 @@ fn load_config(app: &tauri::AppHandle) -> AppConfig {
                 }
                 config
             }
-            Err(_) => AppConfig::default(),
+            Err(e) => {
+                log_error(app, &format!("Config read error: {}", e));
+                AppConfig::default()
+            },
         }
     } else {
         AppConfig::default()
     }
 }
+
+// @Utils 后端日志写入（与前端日志同文件）
 
 /// 写入错误日志到应用日志目录（Tauri 日志系统低层写入，不依赖前端）
 fn log_error(app: &tauri::AppHandle, msg: &str) {
@@ -1083,6 +1141,23 @@ fn log_error(app: &tauri::AppHandle, msg: &str) {
         }
     }
 }
+
+/// 写入信息日志到应用日志目录（同 log_error，但标记 [info] 级别）
+fn log_info(app: &tauri::AppHandle, msg: &str) {
+    if let Ok(app_dir) = app.path().app_data_dir() {
+        let log_dir = app_dir.join("logs");
+        let _ = fs::create_dir_all(&log_dir);
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let log_path = log_dir.join(format!("{}.log", today));
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+            let _ = writeln!(file, "[{}][info] {}", ts, msg);
+            let _ = file.flush();
+        }
+    }
+}
+
+// @Repository 原子写入配置：tmp + rename，写入前备份已有文件
 
 fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
     let path = config_path(app);
@@ -1114,6 +1189,7 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
 
 // ==================== 开机自启 ====================
 
+// @Setup Windows 注册表开机自启（reg.exe，仅在 set_config 中调）
 fn set_auto_start(enabled: bool) {
     let exe_path = std::env::current_exe().ok();
     let app_name = "HRB Tools";
@@ -1134,6 +1210,7 @@ fn set_auto_start(enabled: bool) {
 
 // ==================== 时区工具 ====================
 
+// @Endpoint datetime→timestamp 转换，支持 4 种输入格式
 #[tauri::command]
 fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
     // 解析时区
@@ -1183,6 +1260,7 @@ fn convert_to_timestamp(request: ConvertRequest) -> ConvertResponse {
     }
 }
 
+// @Endpoint timestamp→datetime 转换
 #[tauri::command]
 fn convert_to_datetime(request: TimestampRequest) -> DatetimeResponse {
     let tz = match resolve_timezone(&request.timezone) {
@@ -1215,6 +1293,7 @@ fn convert_to_datetime(request: TimestampRequest) -> DatetimeResponse {
     }
 }
 
+// @Endpoint 读取/写入完整配置
 #[tauri::command]
 fn get_config(app: tauri::AppHandle) -> AppConfig {
     load_config(&app)
@@ -1222,6 +1301,7 @@ fn get_config(app: tauri::AppHandle) -> AppConfig {
 
 #[tauri::command]
 fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
+    log_info(&app, &format!("set_config: auto_start={}, theme={}", config.auto_start, config.theme));
     // 仅 auto_start 变化时才调 reg.exe，避免每次保存都 spawn 进程
     let old = load_config(&app);
     if old.auto_start != config.auto_start {
@@ -1234,11 +1314,13 @@ fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
     }
 }
 
+// @Endpoint 读取/保存节假日数据
 #[tauri::command]
 fn get_holiday_data(app: tauri::AppHandle) -> Vec<HolidayYearConfig> {
     load_config(&app).holiday_data
 }
 
+// @Endpoint 保存节假日数据
 #[tauri::command]
 fn save_holiday_data(app: tauri::AppHandle, data: Vec<HolidayYearConfig>) -> OpResult {
     let mut config = load_config(&app);
@@ -1250,6 +1332,7 @@ fn save_holiday_data(app: tauri::AppHandle, data: Vec<HolidayYearConfig>) -> OpR
     }
 }
 
+// @Endpoint 系统文件/文件夹选择对话框
 #[tauri::command]
 fn pick_file(app: tauri::AppHandle, start_dir: Option<String>) -> Option<String> {
     let window = app.get_webview_window("main");
@@ -1266,6 +1349,7 @@ fn pick_file(app: tauri::AppHandle, start_dir: Option<String>) -> Option<String>
         .map(|p| p.to_string_lossy().to_string())
 }
 
+// @Endpoint 系统文件选择对话框（文件夹模式）
 #[tauri::command]
 fn pick_directory(app: tauri::AppHandle, start_dir: Option<String>) -> Option<String> {
     let window = app.get_webview_window("main");
@@ -1282,6 +1366,7 @@ fn pick_directory(app: tauri::AppHandle, start_dir: Option<String>) -> Option<St
         .map(|p| p.to_string_lossy().to_string())
 }
 
+// @Service 备份列表内部实现（无 IPC，供 create_backup 复用）
 fn list_backups_internal(config: &AppConfig, game_id: &str, slot_id: &str) -> Vec<BackupInfo> {
     let game_dir = std::path::PathBuf::from(&config.backup_root)
         .join(game_id)
@@ -1359,6 +1444,7 @@ fn read_backup_meta(dir: &std::path::Path, folder_name: &str) -> Option<BackupIn
     })
 }
 
+// @Endpoint 创建存档备份：校验路径 → 计算哈希 → 去重检查 → 复制文件 → 写入 meta.json
 #[tauri::command]
 fn create_backup(
     app: tauri::AppHandle,
@@ -1368,6 +1454,7 @@ fn create_backup(
 ) -> OpResult {
     if let Err(e) = sanitize_path_component(&game_id) { return e; }
     if let Err(e) = sanitize_path_component(&slot_id) { return e; }
+    log_info(&app, &format!("create_backup: game={}, slot={}, files={}", game_id, slot_id, file_paths.len()));
     let mut config = load_config(&app);
 
     // 1. 检查备份目录
@@ -1516,15 +1603,25 @@ fn create_backup(
     }
 }
 
+// @Endpoint 获取备份列表（按修改时间倒序）
 #[tauri::command]
 fn list_backups(app: tauri::AppHandle, game_id: String, slot_id: String) -> Vec<BackupInfo> {
     if sanitize_path_component(&game_id).is_err() || sanitize_path_component(&slot_id).is_err() {
+        log_error(&app, &format!("SECURITY: blocked path component: game={}, slot={}", game_id, slot_id));
         return vec![];
     }
     let config = load_config(&app);
-    list_backups_internal(&config, &game_id, &slot_id)
+    let result = list_backups_internal(&config, &game_id, &slot_id);
+    if result.is_empty() {
+        let game_dir = std::path::PathBuf::from(&config.backup_root).join(&game_id).join(&slot_id);
+        if !game_dir.exists() {
+            log_info(&app, &format!("list_backups: dir not found: {:?}", game_dir));
+        }
+    }
+    result
 }
 
+// @Endpoint 删除备份目录（rmtree 递归删除）
 #[tauri::command]
 fn delete_backup(
     app: tauri::AppHandle,
@@ -1535,6 +1632,7 @@ fn delete_backup(
     if let Err(e) = sanitize_path_component(&game_id) { return e; }
     if let Err(e) = sanitize_path_component(&slot_id) { return e; }
     if let Err(e) = sanitize_path_component(&folder_name) { return e; }
+    log_info(&app, &format!("delete_backup: folder={}", folder_name));
     let config = load_config(&app);
     let backup_dir = std::path::PathBuf::from(&config.backup_root)
         .join(&game_id)
@@ -1551,6 +1649,7 @@ fn delete_backup(
     }
 }
 
+// @Endpoint 重命名备份目录（显示名/描述）
 #[tauri::command]
 fn rename_backup(
     app: tauri::AppHandle,
@@ -1618,6 +1717,7 @@ fn rename_backup(
     OpResult { success: true, message: "重命名成功".to_string() }
 }
 
+// @Endpoint 恢复备份含三种流程：直接恢复/多文件选择/需要先备份确认
 #[tauri::command]
 fn restore_backup(
     app: tauri::AppHandle,
@@ -1627,6 +1727,7 @@ fn restore_backup(
     skip_backup: bool,
     selected_files: Option<Vec<String>>,
 ) -> RestoreResult {
+    log_info(&app, &format!("restore_backup: folder={}, skip_backup={}", folder_name, skip_backup));
     if let Err(e) = sanitize_path_component(&game_id) {
         return RestoreResult { success: false, message: e.message, available_files: None, need_backup_confirm: None };
     }
@@ -1763,7 +1864,7 @@ fn restore_backup(
     }
 }
 
-/// 在备份目录中找第一个非 meta.json 的文件
+// @Utils 在备份目录中找第一个非 meta.json 的文件（旧格式兼容用）
 fn find_backup_file(backup_dir: &std::path::Path) -> Option<std::path::PathBuf> {
     std::fs::read_dir(backup_dir).ok()?
         .filter_map(|e| e.ok())
@@ -1775,6 +1876,7 @@ fn find_backup_file(backup_dir: &std::path::Path) -> Option<std::path::PathBuf> 
 
 // ==================== 哈希计算 ====================
 
+// @Endpoint 计算文件哈希（MD5，支持通配符过滤）
 #[tauri::command]
 fn compute_hash(file_paths: Vec<String>, patterns: Vec<String>) -> Result<std::collections::HashMap<String, String>, String> {
     let mut result = std::collections::HashMap::new();
@@ -1808,6 +1910,7 @@ fn compute_single_hash(file_path: String, patterns: Vec<String>) -> Result<Strin
     }
 }
 
+// @Utils 计算单个文件 MD5 哈希
 fn compute_file_hash(path: &std::path::Path) -> Result<String, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("打开文件失败: {}", e))?;
@@ -1823,6 +1926,7 @@ fn compute_file_hash(path: &std::path::Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+// @Utils 计算目录哈希：按通配符过滤文件，拼接 MD5
 fn compute_dir_hash(dir: &std::path::Path, patterns: &[String]) -> Result<String, String> {
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| format!("读取目录失败: {}", e))?
@@ -1852,7 +1956,7 @@ fn compute_dir_hash(dir: &std::path::Path, patterns: &[String]) -> Result<String
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// 简单通配符匹配：支持 *xxx、xxx*、*xxx*
+// @Utils 简单通配符匹配：支持 *xxx、xxx*、*xxx*
 fn simple_glob_match(pattern: &str, name: &str) -> bool {
     let pattern = pattern.to_lowercase();
     let name = name.to_lowercase();
@@ -1868,6 +1972,7 @@ fn simple_glob_match(pattern: &str, name: &str) -> bool {
     name == pattern
 }
 
+// @Endpoint 切换备份/游戏置顶状态
 #[tauri::command]
 fn toggle_backup_pin(
     app: tauri::AppHandle,
@@ -1911,6 +2016,7 @@ fn toggle_backup_pin(
     }
 }
 
+// @Endpoint 切换游戏置顶状态
 #[tauri::command]
 fn toggle_game_pin(app: tauri::AppHandle, game_id: String) -> OpResult {
     let mut config = load_config(&app);
@@ -1921,6 +2027,7 @@ fn toggle_game_pin(app: tauri::AppHandle, game_id: String) -> OpResult {
     OpResult { success: true, message: "已更新".to_string() }
 }
 
+// @Endpoint 在资源管理器中打开指定路径
 #[tauri::command]
 fn open_folder(path: String) -> OpResult {
     let path = std::path::Path::new(&path);
@@ -1964,6 +2071,7 @@ fn open_folder(path: String) -> OpResult {
     }
 }
 
+// @Endpoint 重算备份文件中所有文件的哈希
 #[tauri::command]
 fn recompute_backup_hash(
     app: tauri::AppHandle,
@@ -2042,6 +2150,7 @@ fn recompute_backup_hash(
 
 // ==================== 时区套件管理 ====================
 
+// @Endpoint 时区套件 CRUD
 #[tauri::command]
 fn add_timezone_set(app: tauri::AppHandle) -> OpResult {
     let mut config = load_config(&app);
@@ -2064,6 +2173,7 @@ fn add_timezone_set(app: tauri::AppHandle) -> OpResult {
     OpResult { success: true, message: "已添加".to_string() }
 }
 
+// @Endpoint 删除时区套件
 #[tauri::command]
 fn remove_timezone_set(app: tauri::AppHandle, set_id: String) -> OpResult {
     if set_id == "beijing" {
@@ -2088,6 +2198,7 @@ fn update_timezone_set(app: tauri::AppHandle, set_id: String, timezone: String, 
     OpResult { success: true, message: "已更新".to_string() }
 }
 
+// @Endpoint/更新时区套件
 #[tauri::command]
 fn toggle_timezone_pin(app: tauri::AppHandle, set_id: String) -> OpResult {
     let mut config = load_config(&app);
@@ -2098,6 +2209,7 @@ fn toggle_timezone_pin(app: tauri::AppHandle, set_id: String) -> OpResult {
     OpResult { success: true, message: "已更新".to_string() }
 }
 
+// @Endpoint 发送系统通知（notify-rust）
 #[tauri::command]
 fn send_notification(_app: tauri::AppHandle, title: String, body: String) -> OpResult {
     let _ = notify_rust::Notification::new()
@@ -2137,6 +2249,7 @@ fn get_app_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|e| e.to_string())
 }
 
+// @Endpoint 日志写入/打开目录/读取今日日志
 #[tauri::command]
 fn log_write(app_handle: tauri::AppHandle, lines: Vec<String>) -> Result<(), String> {
     let app_dir = get_app_dir(&app_handle)?;
@@ -2175,6 +2288,7 @@ fn log_write(app_handle: tauri::AppHandle, lines: Vec<String>) -> Result<(), Str
     Ok(())
 }
 
+// @Endpoint 打开日志目录
 #[tauri::command]
 fn open_log_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app_dir = get_app_dir(&app_handle)?;
@@ -2209,6 +2323,7 @@ fn open_log_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// @Endpoint 读取今日日志
 #[tauri::command]
 fn read_today_logs(app_handle: tauri::AppHandle) -> Result<Vec<String>, String> {
     let app_dir = get_app_dir(&app_handle)?;
@@ -2224,6 +2339,8 @@ fn read_today_logs(app_handle: tauri::AppHandle) -> Result<Vec<String>, String> 
     let lines = content.lines().map(|l| l.to_string()).collect();
     Ok(lines)
 }
+
+// @Service 提醒推期逻辑：daily 按工作日/休息日，monthly 支持月末模式
 
 /// 计算每日提醒的下一次触发时间戳（从明天开始扫描）
 fn advance_daily_reminder(
@@ -2255,6 +2372,7 @@ fn advance_daily_reminder(
     }
 }
 
+// @Service 月度提醒推期：支持月末/倒数第2/倒数第3模式
 fn advance_monthly_reminder(current_fire_at: i64, day_mode: &str) -> Option<i64> {
     let beijing = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
     let utc_dt = chrono::DateTime::from_timestamp_millis(current_fire_at)?;
@@ -2286,6 +2404,8 @@ fn advance_monthly_reminder(current_fire_at: i64, day_mode: &str) -> Option<i64>
     }
 }
 
+// @Setup 应用入口：托盘图标 → 窗口初始化 → 提醒线程
+// 提醒线程：生产者/消费者模式，JS 产 pending_reminders，Rust 每 5s 消费
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
