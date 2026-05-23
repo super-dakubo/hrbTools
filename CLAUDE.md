@@ -61,7 +61,7 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 核心结构：
 ```rust
-AppConfig { backup_root, games: Vec<GameConfig>, timezone_sets, theme, tab_order, todos, holiday_data: Vec<HolidayYearConfig>, auto_start, minimize_to_tray, reminder_enabled }
+AppConfig { backup_root, games: Vec<GameConfig>, timezone_sets, theme, tab_order, todos, holiday_data: Vec<HolidayYearConfig>, auto_start, reminder_enabled }
 GameConfig { id: UUID, name, slots: Vec<SlotConfig>, pinned }
 SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_file_patterns: Vec<String> }
 ```
@@ -198,4 +198,4 @@ main.rs 所有函数和结构体顶部有 SpringBoot 风格标签（最近新增
 
 ### 窗口
 
-960×720 不可缩放，无边框，默认隐藏（`visible: false`）。启动时检查 `--minimized` 参数：有则保持隐藏（开机自启场景），无则调用 `window.show()`（手动启动场景）。最小化隐藏到托盘，关闭完全退出。`config.minimize_to_tray` 控制开关。
+960×720 不可缩放，无边框，默认隐藏（`visible: false`）。启动时检查 `--minimized` 参数：有则保持隐藏（开机自启场景），无则调用 `window.show()`（手动启动场景）。最小化按钮始终隐藏到托盘，关闭完全退出。开机自启时直接到托盘（由 `auto_start` 控制）。

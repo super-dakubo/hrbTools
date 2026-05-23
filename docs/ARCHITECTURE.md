@@ -106,7 +106,6 @@ struct AppConfig {
     todos: Vec<TodoItem>,                   // 待办列表
     holiday_data: Vec<HolidayYearConfig>,   // 节假日配置（逐年）
     auto_start: bool,                       // 开机自启
-    minimize_to_tray: bool,                 // 最小化到托盘
     reminder_enabled: bool,                 // 启用提醒通知（默认 true）
     banners: Vec<BannerEntry>,              // 横幅列表（Rust 线程写入，JS 读取渲染）
     pending_reminders: Vec<PendingReminder>, // 待消费提醒队列（JS 写入，Rust 线程消费）
@@ -603,7 +602,7 @@ let mut log_file: Option<(String, BufWriter<File>)> = None;
 | 右键菜单 → 显示 | 恢复窗口 |
 | 右键菜单 → 退出 | `app.exit(0)` |
 
-`config.minimize_to_tray` 控制最小化按钮是否隐藏到托盘。
+最小化按钮始终隐藏到托盘（开机自启到托盘由 `auto_start` 控制）。
 
 ---
 
