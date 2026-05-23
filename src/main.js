@@ -1175,7 +1175,6 @@ autoStartToggle.addEventListener('click', function() {
     saveConfigToBackend();
 });
 
-
 // 启用提醒开关
 reminderToggle.addEventListener('click', function() {
     currentConfig.reminder_enabled = !currentConfig.reminder_enabled;
