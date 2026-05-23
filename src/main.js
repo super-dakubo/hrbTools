@@ -50,7 +50,6 @@ const settingsSetDirBtn = document.getElementById('settingsSetDirBtn');
 const settingsOpenDirBtn = document.getElementById('settingsOpenDirBtn');
 const themeSlider = document.getElementById('themeSlider');
 const autoStartToggle = document.getElementById('autoStartToggle');
-const trayToggle = document.getElementById('trayToggle');
 const reminderToggle = document.getElementById('reminderToggle');
 
 // ==================== Tab 栏管理 ====================
@@ -1176,12 +1175,6 @@ autoStartToggle.addEventListener('click', function() {
     saveConfigToBackend();
 });
 
-// 托盘开关
-trayToggle.addEventListener('click', function() {
-    currentConfig.minimize_to_tray = !currentConfig.minimize_to_tray;
-    updateSettingsDisplay();
-    saveConfigToBackend();
-});
 
 // 启用提醒开关
 reminderToggle.addEventListener('click', function() {
@@ -1235,9 +1228,6 @@ function updateSettingsDisplay() {
     // 开关状态
     if (autoStartToggle) {
         autoStartToggle.dataset.state = currentConfig.auto_start ? 'on' : 'off';
-    }
-    if (trayToggle) {
-        trayToggle.dataset.state = currentConfig.minimize_to_tray ? 'on' : 'off';
     }
     if (reminderToggle) {
         reminderToggle.dataset.state = currentConfig.reminder_enabled !== false ? 'on' : 'off';
