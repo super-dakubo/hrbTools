@@ -192,8 +192,6 @@ struct AppConfig {
     todos: Vec<TodoItem>,
     #[serde(default)]
     auto_start: bool,
-    #[serde(default)]
-    minimize_to_tray: bool,
     #[serde(default = "default_true")]
     reminder_enabled: bool,
     #[serde(default)]
@@ -259,7 +257,6 @@ impl Default for AppConfig {
             tab_order: default_tab_order(),
             todos: vec![],
             auto_start: false,
-            minimize_to_tray: true,
             reminder_enabled: true,
             holiday_data: vec![],
             screenshot_sources: vec![],
