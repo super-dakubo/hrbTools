@@ -529,11 +529,24 @@ async function loadConfig() {
     }
 }
 
+let _saveInProgress = false;
+let _pendingSave = false;
 async function saveConfigToBackend() {
+    if (_saveInProgress) {
+        _pendingSave = true;
+        return;
+    }
+    _saveInProgress = true;
+    _pendingSave = false;
     try {
         await invoke('set_config', { config: currentConfig });
     } catch (err) {
         window.__log.error('Config', '保存配置失败: ' + err);
+    } finally {
+        _saveInProgress = false;
+        if (_pendingSave) {
+            saveConfigToBackend();
+        }
     }
 }
 
