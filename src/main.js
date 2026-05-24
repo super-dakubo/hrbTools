@@ -2519,6 +2519,7 @@ function renderBanners() {
             startDismissTimer(b);
         }
     });
+    updateBellBadge();
 }
 
 function getRemainingSec(banner) {
@@ -2526,6 +2527,122 @@ function getRemainingSec(banner) {
     var elapsed = Date.now() - banner.created_at;
     var remaining = Math.max(0, Math.ceil((timeoutMs - elapsed) / 1000));
     return remaining;
+}
+
+function toggleNotificationCenter() {
+    var panel = document.getElementById('notificationCenter');
+    if (panel) {
+        panel.classList.remove('open');
+        setTimeout(function() { if (panel && !panel.classList.contains('open')) panel.remove(); }, 200);
+        return;
+    }
+    renderNotificationCenter();
+}
+
+function renderNotificationCenter() {
+    var old = document.getElementById('notificationCenter');
+    if (old) old.remove();
+
+    var banners = currentConfig.banners || [];
+    var sorted = banners.slice().sort(function(a, b) { return b.created_at - a.created_at; });
+
+    var panel = document.createElement('div');
+    panel.id = 'notificationCenter';
+    panel.className = 'notif-center open';
+
+    // 头部
+    var header = document.createElement('div');
+    header.className = 'notif-center-header';
+    header.innerHTML = '<span>通知中心</span>'
+        + '<span class="notif-mark-read" id="notifMarkRead">全部已读</span>';
+    panel.appendChild(header);
+
+    // 列表
+    var list = document.createElement('div');
+    list.className = 'notif-center-list';
+    if (sorted.length === 0) {
+        list.innerHTML = '<div class="notif-empty">暂无通知</div>';
+    } else {
+        sorted.forEach(function(b) {
+            var item = document.createElement('div');
+            item.className = 'notif-item' + (b.read ? ' read' : '');
+            var iconMap = { Info: 'ℹ️', Success: '✅', Warning: '⚠️', Error: '❌' };
+            item.innerHTML = '<span class="notif-item-icon">' + (iconMap[b.level] || 'ℹ️') + '</span>'
+                + '<div class="notif-item-body">'
+                + '<span class="notif-item-source">' + escapeHtml(b.source) + '</span>'
+                + '<span class="notif-item-title">' + escapeHtml(b.title) + '</span>'
+                + (b.message ? '<span class="notif-item-msg">' + escapeHtml(b.message) + '</span>' : '')
+                + '<span class="notif-item-time">' + formatRelativeTime(b.created_at) + '</span>'
+                + '</div>'
+                + '<button class="notif-item-close" data-banner-id="' + escapeHtml(b.id) + '">&times;</button>';
+            list.appendChild(item);
+        });
+    }
+    panel.appendChild(list);
+
+    document.body.appendChild(panel);
+
+    // 全部已读
+    document.getElementById('notifMarkRead').addEventListener('click', function() {
+        (currentConfig.banners || []).forEach(function(b) { b.read = true; });
+        saveConfigToBackend();
+        renderNotificationCenter();
+        renderBanners();
+    });
+
+    // 单个关闭
+    panel.querySelectorAll('.notif-item-close').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = this.dataset.bannerId;
+            dismissNotification(id);
+            var itemEl = this.closest('.notif-item');
+            if (itemEl) {
+                itemEl.classList.add('removing');
+            }
+            setTimeout(function() {
+                var p = document.getElementById('notificationCenter');
+                if (p) { renderNotificationCenter(); }
+                renderBanners();
+            }, 200);
+        });
+    });
+
+    // 点击外部关闭
+    setTimeout(function() {
+        function closeNotif(e) {
+            var notif = document.getElementById('notificationCenter');
+            var bell = document.getElementById('notificationBell');
+            if (!notif) { document.removeEventListener('click', closeNotif); return; }
+            if (!notif.contains(e.target) && e.target !== bell) {
+                notif.classList.remove('open');
+                setTimeout(function() {
+                    if (notif && !notif.classList.contains('open')) notif.remove();
+                }, 200);
+                document.removeEventListener('click', closeNotif);
+            }
+        }
+        document.addEventListener('click', closeNotif);
+    }, 0);
+}
+
+function formatRelativeTime(ts) {
+    var diff = Date.now() - ts;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
+    return Math.floor(diff / 86400000) + ' 天前';
+}
+
+function updateBellBadge() {
+    var bell = document.getElementById('notificationBell');
+    if (!bell) return;
+    var unread = (currentConfig.banners || []).filter(function(b) { return !b.read; }).length;
+    if (unread > 0) {
+        bell.innerHTML = '<span class="bell-icon">🔔</span><span class="bell-badge">' + unread + '</span>';
+    } else {
+        bell.innerHTML = '<span class="bell-icon">🔔</span>';
+    }
 }
 
 // ==================== 启动 ====================
@@ -2573,6 +2690,15 @@ document.addEventListener('DOMContentLoaded', async function() {
             syncPendingReminders();
             // 展示横幅（从 config.banners 读取）
             renderBanners();
+
+            // 铃铛按钮
+            var bell = document.getElementById('notificationBell');
+            if (bell) {
+                bell.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    renderNotificationCenter();
+                });
+            }
 
             // 填充年份下拉
             (function populateHolidayYears() {
