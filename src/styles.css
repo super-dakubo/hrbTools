@@ -1483,8 +1483,8 @@ body.light .dialog-overlay {
 }
 
 @keyframes toastOut {
-  from { opacity: 1; max-height: 60px; padding: 8px 14px; }
-  to { opacity: 0; max-height: 0; padding: 0 14px; margin: 0; }
+  from { opacity: 1; transform: translateX(0); max-height: 60px; padding: 8px 14px; }
+  to { opacity: 0; transform: translateX(20px); max-height: 0; padding: 0 14px; margin: 0; }
 }
 
 /* 亮色模式适配 */

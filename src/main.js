@@ -2395,6 +2395,13 @@ function dismissNotification(bannerId) {
     renderBanners();
 }
 
+function clearAllTimers() {
+    Object.keys(_notificationTimers).forEach(function(id) {
+        clearTimeout(_notificationTimers[id]);
+    });
+    _notificationTimers = {};
+}
+
 function renderBanners() {
     var banners = currentConfig.banners || [];
     var container = document.getElementById('bannerArea');
@@ -2527,16 +2534,6 @@ function getRemainingSec(banner) {
     var elapsed = Date.now() - banner.created_at;
     var remaining = Math.max(0, Math.ceil((timeoutMs - elapsed) / 1000));
     return remaining;
-}
-
-function toggleNotificationCenter() {
-    var panel = document.getElementById('notificationCenter');
-    if (panel) {
-        panel.classList.remove('open');
-        setTimeout(function() { if (panel && !panel.classList.contains('open')) panel.remove(); }, 200);
-        return;
-    }
-    renderNotificationCenter();
 }
 
 function renderNotificationCenter() {
