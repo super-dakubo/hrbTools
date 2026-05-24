@@ -316,12 +316,63 @@ struct ReminderConfig {
     day_mode: String,   // "fixed" | "last" | "second_last" | "third_last"，仅 monthly 有效
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+enum NotificationLevel {
+    #[default]
+    #[serde(rename = "Info")]
+    Info,
+    #[serde(rename = "Success")]
+    Success,
+    #[serde(rename = "Warning")]
+    Warning,
+    #[serde(rename = "Error")]
+    Error,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BannerEntry {
+    #[serde(default)]
     id: String,
-    todo_id: String,
-    text: String,
+    #[serde(default)]
+    level: NotificationLevel,
+    #[serde(default)]
+    source: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
     created_at: i64,
+    #[serde(default = "default_auto_dismiss")]
+    auto_dismiss: bool,
+    #[serde(default)]
+    read: bool,
+}
+
+fn default_auto_dismiss() -> bool { true }
+
+// @Service 通用通知推送：任意模块调用，写入 config.banners
+fn push_notification(
+    app: &tauri::AppHandle,
+    level: NotificationLevel,
+    source: &str,
+    title: &str,
+    message: &str,
+) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut config = load_config(app);
+    let auto_dismiss = matches!(level, NotificationLevel::Info | NotificationLevel::Success | NotificationLevel::Warning);
+    config.banners.push(BannerEntry {
+        id: format!("notif_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
+        level,
+        source: source.to_string(),
+        title: title.to_string(),
+        message: message.to_string(),
+        created_at: chrono::Utc::now().timestamp_millis(),
+        auto_dismiss,
+        read: false,
+    });
+    save_config(app, &config);
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2421,8 +2472,160 @@ fn advance_monthly_reminder(current_fire_at: i64, day_mode: &str) -> Option<i64>
     }
 }
 
+// @Service 提醒线程：生产者/消费者模式，JS 产 pending_reminders，Rust 每 5s 消费
+fn reminder_thread(app_handle: tauri::AppHandle) {
+    // 持久化日志句柄（避免每5秒开关文件）
+    let mut log_file: Option<(String, std::io::BufWriter<std::fs::File>)> = None;
+    let mut write_log = |line: &str| {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let reopen = log_file.as_ref().map_or(true, |(d, _)| *d != today);
+        if reopen {
+            if let Ok(app_dir) = app_handle.path().app_data_dir() {
+                let log_dir = app_dir.join("logs");
+                let _ = std::fs::create_dir_all(&log_dir);
+                let log_path = log_dir.join(format!("{}.log", today));
+                if let Ok(file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path)
+                {
+                    log_file = Some((today, std::io::BufWriter::new(file)));
+                }
+            }
+        }
+        if let Some((_, ref mut writer)) = log_file {
+            let ts = chrono::Local::now().format("%H:%M:%S%.3f");
+            let _ = writeln!(writer, "[{}][reminder] {}", ts, line);
+            let _ = writer.flush();
+        }
+    };
+
+    write_log("提醒线程启动");
+    let mut last_reminder_log_sec = 0i64;
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        let config_path = match app_handle.path().app_data_dir() {
+            Ok(p) => p.join("config.json"),
+            Err(_) => continue,
+        };
+        let json = match std::fs::read_to_string(&config_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let mut config: AppConfig = match serde_json::from_str(&json) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let now = chrono::Utc::now().timestamp_millis();
+        if !config.reminder_enabled {
+            let sec = now / 1000;
+            if sec - last_reminder_log_sec >= 60 {
+                write_log("reminder_enabled = false，跳过");
+                last_reminder_log_sec = sec;
+            }
+            continue;
+        }
+
+        let mut reminder_fired = false;
+        let mut to_remove: Vec<String> = Vec::new();
+        let mut to_add: Vec<PendingReminder> = Vec::new();
+        let mut to_done: Vec<String> = Vec::new();
+
+        for reminder in &config.pending_reminders {
+            if reminder.fire_at > now { continue; }
+            // 跳过过于陈旧的（>5min），防止长时间关机后开机批量触发
+            if now - reminder.fire_at > 300_000 {
+                to_remove.push(reminder.id.clone());
+                continue;
+            }
+
+            // 触发通知
+            let _ = notify_rust::Notification::new()
+                .summary("HRB Tools")
+                .body(&reminder.text)
+                .show();
+
+            // 声音
+            if reminder.sound {
+                #[cfg(target_os = "windows")]
+                unsafe { Beep(880, 200); }
+            }
+
+            // 写入横幅
+            config.banners.push(BannerEntry {
+                id: reminder.id.clone(),
+                level: NotificationLevel::Info,
+                source: "reminder".to_string(),
+                title: "⏰ Reminder".to_string(),
+                message: reminder.text.clone(),
+                created_at: now,
+                auto_dismiss: true,
+                read: false,
+            });
+
+            // 周期任务推期
+            if let Some(ref repeat) = reminder.repeat {
+                let next_fire = match repeat.as_str() {
+                    "daily" => advance_daily_reminder(
+                        &reminder.workday_time, &reminder.restday_time, &config.holiday_data),
+                    "weekly" => Some(reminder.fire_at + 7 * 24 * 60 * 60 * 1000),
+                    "monthly" => advance_monthly_reminder(reminder.fire_at, &reminder.day_mode),
+                    _ => None,
+                };
+                if let Some(next_ms) = next_fire {
+                    to_add.push(PendingReminder {
+                        id: format!("{}_{}", reminder.todo_id, next_ms),
+                        todo_id: reminder.todo_id.clone(),
+                        text: reminder.text.clone(),
+                        fire_at: next_ms,
+                        sound: reminder.sound,
+                        repeat: reminder.repeat.clone(),
+                        workday_time: reminder.workday_time.clone(),
+                        restday_time: reminder.restday_time.clone(),
+                        day_mode: reminder.day_mode.clone(),
+                    });
+                }
+            } else {
+                // 一次性：标记待办完成
+                to_done.push(reminder.todo_id.clone());
+            }
+
+            to_remove.push(reminder.id.clone());
+            reminder_fired = true;
+
+            // 显示窗口
+            if let Some(w) = app_handle.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_always_on_top(true);
+                let _ = w.set_focus();
+                let _ = w.set_always_on_top(false);
+            }
+        }
+
+        // 批量应用变更
+        config.pending_reminders.retain(|r| !to_remove.contains(&r.id));
+        config.pending_reminders.extend(to_add);
+
+        for todo_id in to_done {
+            if let Some(todo) = config.todos.iter_mut().find(|t| t.id == todo_id) {
+                todo.done = true;
+                todo.completed_at = Some(
+                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+                );
+            }
+        }
+
+        if reminder_fired {
+            save_config(&app_handle, &config);
+            if let Some(w) = app_handle.get_webview_window("main") {
+                let _ = w.eval("try{window.__onReminderFired()}catch(e){}");
+            }
+        }
+    }
+}
+
 // @Setup 应用入口：托盘图标 → 窗口初始化 → 提醒线程
-// 提醒线程：生产者/消费者模式，JS 产 pending_reminders，Rust 每 5s 消费
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -2471,155 +2674,7 @@ fn main() {
                 .build(app)?;
 
             let app_handle = app.handle().clone();
-
-            // 提醒线程
-            std::thread::spawn(move || {
-                // 持久化日志句柄（避免每5秒开关文件）
-                let mut log_file: Option<(String, std::io::BufWriter<std::fs::File>)> = None;
-                let mut write_log = |line: &str| {
-                    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                    let reopen = log_file.as_ref().map_or(true, |(d, _)| *d != today);
-                    if reopen {
-                        if let Ok(app_dir) = app_handle.path().app_data_dir() {
-                            let log_dir = app_dir.join("logs");
-                            let _ = std::fs::create_dir_all(&log_dir);
-                            let log_path = log_dir.join(format!("{}.log", today));
-                            if let Ok(file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(&log_path)
-                            {
-                                log_file = Some((today, std::io::BufWriter::new(file)));
-                            }
-                        }
-                    }
-                    if let Some((_, ref mut writer)) = log_file {
-                        let ts = chrono::Local::now().format("%H:%M:%S%.3f");
-                        let _ = writeln!(writer, "[{}][reminder] {}", ts, line);
-                        let _ = writer.flush();
-                    }
-                };
-
-                write_log("提醒线程启动");
-                let mut last_reminder_log_sec = 0i64;
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(5));
-                    let config_path = match app_handle.path().app_data_dir() {
-                        Ok(p) => p.join("config.json"),
-                        Err(_) => continue,
-                    };
-                    let json = match std::fs::read_to_string(&config_path) {
-                        Ok(s) => s,
-                        Err(_) => continue,
-                    };
-                    let mut config: AppConfig = match serde_json::from_str(&json) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    let now = chrono::Utc::now().timestamp_millis();
-                    if !config.reminder_enabled {
-                        let sec = now / 1000;
-                        if sec - last_reminder_log_sec >= 60 {
-                            write_log("reminder_enabled = false，跳过");
-                            last_reminder_log_sec = sec;
-                        }
-                        continue;
-                    }
-
-                    let mut reminder_fired = false;
-                    let mut to_remove: Vec<String> = Vec::new();
-                    let mut to_add: Vec<PendingReminder> = Vec::new();
-                    let mut to_done: Vec<String> = Vec::new();
-
-                    for reminder in &config.pending_reminders {
-                        if reminder.fire_at > now { continue; }
-                        // 跳过过于陈旧的（>5min），防止长时间关机后开机批量触发
-                        if now - reminder.fire_at > 300_000 {
-                            to_remove.push(reminder.id.clone());
-                            continue;
-                        }
-
-                        // 触发通知
-                        let _ = notify_rust::Notification::new()
-                            .summary("HRB Tools")
-                            .body(&reminder.text)
-                            .show();
-
-                        // 声音
-                        if reminder.sound {
-                            #[cfg(target_os = "windows")]
-                            unsafe { Beep(880, 200); }
-                        }
-
-                        // 写入横幅
-                        config.banners.push(BannerEntry {
-                            id: reminder.id.clone(),
-                            todo_id: reminder.todo_id.clone(),
-                            text: format!("⏰ {}", reminder.text),
-                            created_at: now,
-                        });
-
-                        // 周期任务推期
-                        if let Some(ref repeat) = reminder.repeat {
-                            let next_fire = match repeat.as_str() {
-                                "daily" => advance_daily_reminder(
-                                    &reminder.workday_time, &reminder.restday_time, &config.holiday_data),
-                                "weekly" => Some(reminder.fire_at + 7 * 24 * 60 * 60 * 1000),
-                                "monthly" => advance_monthly_reminder(reminder.fire_at, &reminder.day_mode),
-                                _ => None,
-                            };
-                            if let Some(next_ms) = next_fire {
-                                to_add.push(PendingReminder {
-                                    id: format!("{}_{}", reminder.todo_id, next_ms),
-                                    todo_id: reminder.todo_id.clone(),
-                                    text: reminder.text.clone(),
-                                    fire_at: next_ms,
-                                    sound: reminder.sound,
-                                    repeat: reminder.repeat.clone(),
-                                    workday_time: reminder.workday_time.clone(),
-                                    restday_time: reminder.restday_time.clone(),
-                                    day_mode: reminder.day_mode.clone(),
-                                });
-                            }
-                        } else {
-                            // 一次性：标记待办完成
-                            to_done.push(reminder.todo_id.clone());
-                        }
-
-                        to_remove.push(reminder.id.clone());
-                        reminder_fired = true;
-
-                        // 显示窗口
-                        if let Some(w) = app_handle.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_always_on_top(true);
-                            let _ = w.set_focus();
-                            let _ = w.set_always_on_top(false);
-                        }
-                    }
-
-                    // 批量应用变更
-                    config.pending_reminders.retain(|r| !to_remove.contains(&r.id));
-                    config.pending_reminders.extend(to_add);
-
-                    for todo_id in to_done {
-                        if let Some(todo) = config.todos.iter_mut().find(|t| t.id == todo_id) {
-                            todo.done = true;
-                            todo.completed_at = Some(
-                                chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
-                            );
-                        }
-                    }
-
-                    if reminder_fired {
-                        save_config(&app_handle, &config);
-                        if let Some(w) = app_handle.get_webview_window("main") {
-                            let _ = w.eval("try{window.__onReminderFired()}catch(e){}");
-                        }
-                    }
-                }
-            });
+            std::thread::spawn(move || reminder_thread(app_handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
