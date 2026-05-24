@@ -2552,16 +2552,8 @@ fn reminder_thread(app_handle: tauri::AppHandle) {
             }
 
             // 写入横幅
-            config.banners.push(BannerEntry {
-                id: reminder.id.clone(),
-                level: NotificationLevel::Info,
-                source: "reminder".to_string(),
-                title: "⏰ Reminder".to_string(),
-                message: reminder.text.clone(),
-                created_at: now,
-                auto_dismiss: true,
-                read: false,
-            });
+            push_notification(&app_handle, NotificationLevel::Info, "提醒",
+                &format!("⏰ {}", reminder.text), "");
 
             // 周期任务推期
             if let Some(ref repeat) = reminder.repeat {
