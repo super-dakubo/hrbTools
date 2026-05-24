@@ -1194,14 +1194,34 @@ fn set_auto_start(enabled: bool) {
     if enabled {
         if let Some(path) = exe_path {
             let path_str = format!("\"{}\" --minimized", path.to_string_lossy());
-            let _ = std::process::Command::new("reg")
+            match std::process::Command::new("reg")
                 .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", app_name, "/t", "REG_SZ", "/d", &path_str, "/f"])
-                .output();
+                .output()
+            {
+                Ok(o) => {
+                    if !o.status.success() {
+                        eprintln!("[set_auto_start] reg.exe add failed: {}", String::from_utf8_lossy(&o.stderr));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[set_auto_start] reg.exe add error: {}", e);
+                }
+            }
         }
     } else {
-        let _ = std::process::Command::new("reg")
+        match std::process::Command::new("reg")
             .args(["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", app_name, "/f"])
-            .output();
+            .output()
+        {
+            Ok(o) => {
+                if !o.status.success() {
+                    eprintln!("[set_auto_start] reg.exe delete failed: {}", String::from_utf8_lossy(&o.stderr));
+                }
+            }
+            Err(e) => {
+                eprintln!("[set_auto_start] reg.exe delete error: {}", e);
+            }
+        }
     }
 }
 
