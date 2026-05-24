@@ -2414,12 +2414,19 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-            // 无 --minimized 参数（手动启动）时显示窗口
+            // Config 直读 + --minimized arg 双保险：任一指示最小化就隐藏窗口
             let is_minimized = std::env::args().any(|a| a == "--minimized");
-            if !is_minimized {
+            let cfg = load_config(&app.handle());
+            let should_minimize = is_minimized || cfg.auto_start;
+
+            if !should_minimize {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                }
+            } else {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
                 }
             }
 
