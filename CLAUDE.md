@@ -46,24 +46,27 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 ### 源文件一览
 
-| 文件 | 行数 | 说明 |
-|------|------|------|
-| [src/index.html](src/index.html) | 210 | HTML 骨架 + 内联启动 IPC 脚本，6 面板 DOM（时间转换/备份/待办/截图/日志/设置） |
-| [src/styles.css](src/styles.css) | ~2220 | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
-| [src/main.js](src/main.js) | ~3360 | 全部前端逻辑，`// ===` 分隔 24+ 区块 + 事件委托 |
-| [src/main.rs](src/main.rs) | ~2647 | 全部 Rust 逻辑，35 个 Tauri 命令，SpringBoot 风格架构标签 |
-| [icons/](icons/) | — | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
-| [tools/gen_icon.py](tools/gen_icon.py) | 132 | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
+| 文件 | 说明 |
+|------|------|
+| [src/index.html](src/index.html) | HTML 骨架 + 内联启动 IPC 脚本，6 面板 DOM（时间转换/备份/待办/截图/日志/设置） |
+| [src/styles.css](src/styles.css) | CSS 变量主题系统（暗色/亮色）+ 全部组件样式，玻璃拟态设计 |
+| [src/main.js](src/main.js) | 全部前端逻辑，`// ===` 分隔 24+ 区块 + 事件委托 |
+| [src/main.rs](src/main.rs) | 全部 Rust 逻辑，~30 个 Tauri 命令（`@Endpoint`），SpringBoot 风格架构标签 |
+| [icons/](icons/) | App/托盘图标：32x32.png、128x128.png、icon.ico。重构时运行 `python tools/gen_icon.py` 重新生成 |
+| [tools/gen_icon.py](tools/gen_icon.py) | 纯 Python 图标生成脚本（stdlib 无依赖），绘制蓝色渐变圆角方块 + 白色字母 H |
 
 ### AppConfig 持久化
 
 读写配置必须用 `load_config(&app)`/`save_config(&app, &config)`，禁止直接操作文件。前端内存副本 `currentConfig` 修改后必须调 `saveConfigToBackend()` 持久化。
 
+**`saveConfigToBackend()` 防重叠锁：** 函数内部有 `_saveInProgress` + `_pendingSave` 双重锁。正在保存时后续调用标记待刷新，当前保存完成后再 flush 一次最新状态。这避免了快速切换时多个 IPC 请求堆积（尤其是 auto_start 变化触发 reg.exe ~3.3s 时）。修改此逻辑时保持此保护。
+
 核心结构：
 ```rust
-AppConfig { backup_root, games: Vec<GameConfig>, timezone_sets, theme, tab_order, todos, holiday_data: Vec<HolidayYearConfig>, auto_start, reminder_enabled }
+AppConfig { backup_root, games: Vec<GameConfig>, timezone_sets, theme, tab_order, todos, holiday_data: Vec<HolidayYearConfig>, auto_start, reminder_enabled, banners: Vec<BannerEntry>, pending_reminders: Vec<PendingReminder>, screenshot_sources: Vec<ScreenshotSource> }
 GameConfig { id: UUID, name, slots: Vec<SlotConfig>, pinned }
 SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_file_patterns: Vec<String> }
+BannerEntry { id, level: Info/Success/Warning/Error, source, title, message, created_at, auto_dismiss, read }
 ```
 
 **`set_auto_start` 条件执行：** `set_config` 命令中 **仅当 `auto_start` 值实际变化时才 spawn `reg.exe`**。`reg.exe` 子进程在 GUI 应用中约 3.3 秒，不要在任何读路径或保存路径中无条件调用。注册表写入路径追加 `--minimized` 参数以实现开机自启时保持隐藏。
@@ -87,6 +90,7 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 | 待办工具面板 | `=== 待办工具 ===` | `renderTodos`, `openTodoEditModal`, `toggleTodoDone` |
 | 启动（init） | `=== 启动 ===` | `DOMContentLoaded` → rAF 分步初始化 |
 | 截图面板 | `=== 截图面板 ===` | `renderScreenshotPanel`/`renderToolbar`/`renderGrid`（分容器渲染），`openLightbox`/`closeLightbox` 灯箱浏览，`openAddSourceDialog` 添加来源对话框。缩略图 LRU 缓存（100 条/500MB，base64 data URI），骨架屏加载态 |
+| 横幅通知系统 | `=== 横幅通知系统 ===` | `pushNotification`/`dismissNotification`/`startDismissTimer`/`clearAllTimers`，`renderBanners`（右上角 Toast 浮层，按级别分色，去重合并，auto-dismiss），`renderNotificationCenter`（铃铛下拉面板），`updateBellBadge` |
 | 事件委托 | `=== 事件委托（一次性设置，替代每次渲染后重新绑定） ===` | `setupEventDelegation`（一次性绑定，替代每次渲染后重新绑定监听器） |
 | 日志系统（IIFE + 面板渲染） | `=== 日志系统 ===` + `=== 日志面板渲染 ===` | `window.__log`, `renderLogPanel`, `bindLogPanelEvents` |
 
@@ -107,11 +111,15 @@ SlotConfig { id: UUID, name, file_paths: Vec<String>, next_backup_number, key_fi
 
 ```text
 JS syncPendingReminders() → pending_reminders
-→ Rust 线程每 5s 消费到期项 → notify-rust + Beep → banners → save_config()
+→ Rust 线程每 5s 消费到期项 → notify-rust + Beep
+  → 直接推 BannerEntry 到本地 config（随批量 save_config 一起持久化）
+  → eval("__onReminderFired()")
 → JS get_config() → renderBanners()
 ```
 
-**设计约束：** JS 生产 pending_reminders，Rust 消费（两方不共享同一字段）。Rust 消费后 `save_config()`，JS 只读刷新。5 分钟陈旧跳过防关机后批量触发。
+**设计约束：** JS 生产 pending_reminders，Rust 消费（两方不共享同一字段）。Rust 线程不要调 `push_notification`（已被删除），直接推 `BannerEntry` 到循环内 `config.banners`，随 `pending_reminders` 变更一起 `save_config()`。5 分钟陈旧跳过防关机后批量触发。
+
+**横幅通知系统（2026-05-24 新增）：** 右上角浮动 Toast 替代内联横幅。`BannerEntry` 数据结构解耦（无 `todo_id`），新增 `level: Info/Success/Warning/Error`、`source` 模块名、`title`、`message`。Toast 按级别分色左边框，去重合并同 source+title。自动消失规则：Success=30s、Info=5min、Warning=2h、Error=永不。标题栏铃铛图标展开通知中心下拉面板。
 
 **推期规则：** 一次性不推期；每日按 `get_day_type` 选 workday_time/restday_time；每周 +7d；每月 `checked_add_months` + day_mode（支持月末/倒数第2/倒数第3模式）。`recalculateNextDue(todo)` 同时推进 `due_date` 和 `reminder.datetime`，每周最多 52 轮/每月 12 轮防死循环。详情见 ARCHITECTURE.md。
 

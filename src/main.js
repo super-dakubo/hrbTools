@@ -497,6 +497,10 @@ async function loadConfig() {
             }
             return b;
         });
+        // 清理经 Rust serde 反序列化后 title 丢失的旧横幅
+        currentConfig.banners = currentConfig.banners.filter(function(b) {
+            return b.title && b.title.trim() !== '';
+        });
     }
     // 迁移旧 reminder.datetime → workday_time/restday_time（仅重复待办）
     (currentConfig.todos || []).forEach(function(t) {
@@ -2547,11 +2551,18 @@ function renderNotificationCenter() {
     panel.id = 'notificationCenter';
     panel.className = 'notif-center open';
 
+    // 根据铃铛按钮位置动态定位
+    var bell = document.getElementById('notificationBell');
+    if (bell) {
+        var rect = bell.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + 'px';
+        panel.style.right = (window.innerWidth - rect.right) + 'px';
+    }
+
     // 头部
     var header = document.createElement('div');
     header.className = 'notif-center-header';
-    header.innerHTML = '<span>通知中心</span>'
-        + '<span class="notif-mark-read" id="notifMarkRead">全部已读</span>';
+    header.textContent = '通知中心';
     panel.appendChild(header);
 
     // 列表
@@ -2563,29 +2574,16 @@ function renderNotificationCenter() {
         sorted.forEach(function(b) {
             var item = document.createElement('div');
             item.className = 'notif-item' + (b.read ? ' read' : '');
-            var iconMap = { Info: 'ℹ️', Success: '✅', Warning: '⚠️', Error: '❌' };
-            item.innerHTML = '<span class="notif-item-icon">' + (iconMap[b.level] || 'ℹ️') + '</span>'
-                + '<div class="notif-item-body">'
-                + '<span class="notif-item-source">' + escapeHtml(b.source) + '</span>'
+            item.innerHTML = '<span class="notif-item-source">' + escapeHtml(b.source) + '</span>'
                 + '<span class="notif-item-title">' + escapeHtml(b.title) + '</span>'
-                + (b.message ? '<span class="notif-item-msg">' + escapeHtml(b.message) + '</span>' : '')
                 + '<span class="notif-item-time">' + formatRelativeTime(b.created_at) + '</span>'
-                + '</div>'
-                + '<button class="notif-item-close" data-banner-id="' + escapeHtml(b.id) + '">&times;</button>';
+                + '<button class="notif-item-close" data-banner-id="' + escapeHtml(b.id) + '">✕</button>';
             list.appendChild(item);
         });
     }
     panel.appendChild(list);
 
     document.body.appendChild(panel);
-
-    // 全部已读
-    document.getElementById('notifMarkRead').addEventListener('click', function() {
-        (currentConfig.banners || []).forEach(function(b) { b.read = true; });
-        saveConfigToBackend();
-        renderNotificationCenter();
-        renderBanners();
-    });
 
     // 单个关闭
     panel.querySelectorAll('.notif-item-close').forEach(function(btn) {
@@ -2634,12 +2632,7 @@ function formatRelativeTime(ts) {
 function updateBellBadge() {
     var bell = document.getElementById('notificationBell');
     if (!bell) return;
-    var unread = (currentConfig.banners || []).filter(function(b) { return !b.read; }).length;
-    if (unread > 0) {
-        bell.innerHTML = '<span class="bell-icon">🔔</span><span class="bell-badge">' + unread + '</span>';
-    } else {
-        bell.innerHTML = '<span class="bell-icon">🔔</span>';
-    }
+    bell.innerHTML = '<span class="bell-icon">🔔</span>';
 }
 
 // ==================== 启动 ====================

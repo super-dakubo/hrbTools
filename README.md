@@ -54,10 +54,10 @@ cargo build
 
 ```
 src/
-  index.html      HTML 骨架，5 面板（时间转换/备份/待办/日志/设置）
+  index.html      HTML 骨架，6 面板（时间转换/备份/待办/截图/日志/设置）
   styles.css      CSS 变量主题（暗色/亮色）+ 全部样式
-  main.js         全部前端逻辑，// === 分隔为 Tab/时间转换/存档/待办/日志 五区块
-  main.rs         全部 Rust 逻辑，28 个 Tauri 命令
+  main.js         全部前端逻辑，// === 分隔为 6 面板区块
+  main.rs         全部 Rust 逻辑，~30 个 Tauri 命令
 
 docs/
   ARCHITECTURE.md  数据结构、命令列表、持久化等详细参考

@@ -351,30 +351,6 @@ struct BannerEntry {
 
 fn default_auto_dismiss() -> bool { true }
 
-// @Service 通用通知推送：任意模块调用，写入 config.banners
-fn push_notification(
-    app: &tauri::AppHandle,
-    level: NotificationLevel,
-    source: &str,
-    title: &str,
-    message: &str,
-) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let mut config = load_config(app);
-    let auto_dismiss = matches!(level, NotificationLevel::Info | NotificationLevel::Success | NotificationLevel::Warning);
-    config.banners.push(BannerEntry {
-        id: format!("notif_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()),
-        level,
-        source: source.to_string(),
-        title: title.to_string(),
-        message: message.to_string(),
-        created_at: chrono::Utc::now().timestamp_millis(),
-        auto_dismiss,
-        read: false,
-    });
-    save_config(app, &config);
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct PendingReminder {
     id: String,
