@@ -2434,19 +2434,12 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-            // Config 直读 + --minimized arg 双保险：任一指示最小化就隐藏窗口
+            // --minimized 参数：开机自启（带此参数）→隐藏到托盘，手动启动→显示窗口
             let is_minimized = std::env::args().any(|a| a == "--minimized");
-            let cfg = load_config(&app.handle());
-            let should_minimize = is_minimized || cfg.auto_start;
-
-            if !should_minimize {
+            if !is_minimized {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
-                }
-            } else {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
                 }
             }
 
