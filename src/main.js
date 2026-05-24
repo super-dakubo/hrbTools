@@ -480,6 +480,24 @@ async function loadConfig() {
         config = await invoke('get_config');
     }
     currentConfig = config;
+    // 迁移旧横幅格式（移除 todo_id，拆 text 为 title）
+    if (currentConfig.banners) {
+        currentConfig.banners = currentConfig.banners.map(function(b) {
+            if (b.todo_id !== undefined && b.level === undefined) {
+                return {
+                    id: b.id,
+                    level: 'Info',
+                    source: '提醒',
+                    title: b.text || '',
+                    message: '',
+                    created_at: b.created_at || Date.now(),
+                    auto_dismiss: true,
+                    read: false,
+                };
+            }
+            return b;
+        });
+    }
     // 迁移旧 reminder.datetime → workday_time/restday_time（仅重复待办）
     (currentConfig.todos || []).forEach(function(t) {
         if (t.reminder && !t.reminder.workday_time && !t.reminder.restday_time && t.reminder.datetime && t.repeat) {
@@ -1684,21 +1702,18 @@ function toggleTodoDone(id) {
 
 function deleteTodo(id) {
     var item = document.querySelector('.todo-item[data-id="' + id + '"]');
-    if (item) {
-        item.classList.add('leaving');
-        setTimeout(function() {
-            var todo = currentConfig.todos.find(function(t) { return t.id === id; });
-            if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
-            currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
-            saveConfigToBackend();
-            renderTodos();
-        }, 200);
-    } else {
-        var todo = currentConfig.todos.find(function(t) { return t.id === id; });
-        if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
+    var todo = currentConfig.todos.find(function(t) { return t.id === id; });
+    if (todo) window.__log.info('Todo', '删除待办: ' + todo.text);
+    var doDelete = function() {
         currentConfig.todos = currentConfig.todos.filter(function(t) { return t.id !== id; });
         saveConfigToBackend();
         renderTodos();
+    };
+    if (item) {
+        item.classList.add('leaving');
+        setTimeout(doDelete, 200);
+    } else {
+        doDelete();
     }
 }
 
@@ -2244,10 +2259,10 @@ function openTodoEditModal(id) {
             reminder: reminderVal ? { datetime: reminderVal, sound: true, day_mode: dayMode } : null,
         };
     }
-    var _saveInProgress = false;
+    var _editSaveInProgress = false;
     function autoSave() {
         if (_saveTimer) clearTimeout(_saveTimer);
-        if (_saveInProgress) return; // 前一次保存未完成则跳过本次
+        if (_editSaveInProgress) return; // 前一次保存未完成则跳过本次
         _saveTimer = setTimeout(function() {
             var fields = collectFields();
             if (!fields) return;
@@ -2278,23 +2293,23 @@ function openTodoEditModal(id) {
             } else {
                 todo.reminder = null;
             }
-            _saveInProgress = true;
+            _editSaveInProgress = true;
             var settled = false;
             var _saveTimeout = setTimeout(function() {
                 settled = true;
-                _saveInProgress = false;
+                _editSaveInProgress = false;
             }, 5000);
             saveConfigToBackend().then(function() {
                 if (settled) return;
                 settled = true;
                 clearTimeout(_saveTimeout);
-                _saveInProgress = false;
+                _editSaveInProgress = false;
                 syncPendingReminders();
             }).catch(function() {
                 if (settled) return;
                 settled = true;
                 clearTimeout(_saveTimeout);
-                _saveInProgress = false;
+                _editSaveInProgress = false;
             });
             // 编辑弹窗中不渲染列表（关闭时才渲染），避免 DOM 操作卡顿
             if (!overlay.parentNode) renderTodos();
@@ -2335,6 +2350,51 @@ function openTodoEditModal(id) {
     });
 }
 
+// ==================== 横幅通知系统 ====================
+
+var _notificationTimers = {};
+
+var DISMISS_TIMES = {
+    Success: 30000,
+    Info: 300000,
+    Warning: 7200000,
+    Error: Infinity,
+};
+
+function pushNotification(level, source, title, message) {
+    var banner = {
+        id: 'notif_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        level: level,
+        source: source,
+        title: title,
+        message: message || '',
+        created_at: Date.now(),
+        auto_dismiss: level !== 'Error',
+        read: false,
+    };
+    currentConfig.banners = currentConfig.banners || [];
+    currentConfig.banners.push(banner);
+    saveConfigToBackend();
+    renderBanners();
+    return banner.id;
+}
+
+function startDismissTimer(banner) {
+    if (!banner.auto_dismiss) return;
+    var timeoutMs = DISMISS_TIMES[banner.level] || 300000;
+    if (_notificationTimers[banner.id]) clearTimeout(_notificationTimers[banner.id]);
+    _notificationTimers[banner.id] = setTimeout(function() {
+        dismissNotification(banner.id);
+    }, timeoutMs);
+}
+
+function dismissNotification(bannerId) {
+    currentConfig.banners = (currentConfig.banners || []).filter(function(b) { return b.id !== bannerId; });
+    delete _notificationTimers[bannerId];
+    saveConfigToBackend();
+    renderBanners();
+}
+
 function renderBanners() {
     var area = document.getElementById('bannerArea');
     if (!area) return;
@@ -2352,7 +2412,7 @@ function renderBanners() {
         var row = document.createElement('div');
         row.className = 'banner-item';
         var span = document.createElement('span');
-        span.textContent = item.text || '';
+        span.textContent = item.title || '';
         row.appendChild(span);
         var btn = document.createElement('button');
         btn.className = 'banner-item-close';
@@ -2614,7 +2674,24 @@ function scanScreenshots(source) {
         _ssCache[_ssCurrentSourceId] = { entries: entries, fetchedAt: Date.now() };
         _ssEntries = entries;
         _ssPage = 0;
+
+        // Trigger fade-in animation
+        var container = document.querySelector('.ss-grid-container');
+        if (container) {
+            var grid = container.querySelector('.ss-grid');
+            if (grid) grid.classList.add('switching');
+        }
+
         renderGrid();
+
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                if (container) {
+                    var g = container.querySelector('.ss-grid');
+                    if (g) g.classList.remove('switching');
+                }
+            });
+        });
     }).catch(function() {
         var wrapper = document.getElementById('screenshotApp');
         if (wrapper) {
@@ -3354,7 +3431,7 @@ function bindLogPanelEvents() {
     var logFilter = document.getElementById('logLevelFilter');
     var logOpenDir = document.getElementById('logOpenDirBtn');
     var logClear  = document.getElementById('logClearBtn');
-    if (logSearch) logSearch.addEventListener('input', renderLogPanel);
+    if (logSearch) logSearch.addEventListener('input', function() { clearTimeout(this._t); this._t = setTimeout(renderLogPanel, 100); });
     if (logFilter) logFilter.addEventListener('change', renderLogPanel);
     if (logOpenDir) logOpenDir.addEventListener('click', function() {
         invoke('open_log_folder').catch(function(err) {
