@@ -1187,7 +1187,7 @@ fn save_config(app: &tauri::AppHandle, config: &AppConfig) {
 // ==================== 开机自启 ====================
 
 // @Setup Windows 注册表开机自启（reg.exe，仅在 set_config 中调）
-fn set_auto_start(enabled: bool) {
+fn set_auto_start(app: &tauri::AppHandle, enabled: bool) {
     let exe_path = std::env::current_exe().ok();
     let app_name = "HRB Tools";
 
@@ -1200,11 +1200,11 @@ fn set_auto_start(enabled: bool) {
             {
                 Ok(o) => {
                     if !o.status.success() {
-                        eprintln!("[set_auto_start] reg.exe add failed: {}", String::from_utf8_lossy(&o.stderr));
+                        log_error(app, &format!("[set_auto_start] reg.exe add failed: {}", String::from_utf8_lossy(&o.stderr)));
                     }
                 }
                 Err(e) => {
-                    eprintln!("[set_auto_start] reg.exe add error: {}", e);
+                    log_error(app, &format!("[set_auto_start] reg.exe add error: {}", e));
                 }
             }
         }
@@ -1215,11 +1215,11 @@ fn set_auto_start(enabled: bool) {
         {
             Ok(o) => {
                 if !o.status.success() {
-                    eprintln!("[set_auto_start] reg.exe delete failed: {}", String::from_utf8_lossy(&o.stderr));
+                    log_error(app, &format!("[set_auto_start] reg.exe delete failed: {}", String::from_utf8_lossy(&o.stderr)));
                 }
             }
             Err(e) => {
-                eprintln!("[set_auto_start] reg.exe delete error: {}", e);
+                log_error(app, &format!("[set_auto_start] reg.exe delete error: {}", e));
             }
         }
     }
@@ -1322,7 +1322,7 @@ fn set_config(app: tauri::AppHandle, config: AppConfig) -> OpResult {
     // 仅 auto_start 变化时才调 reg.exe，避免每次保存都 spawn 进程
     let old = load_config(&app);
     if old.auto_start != config.auto_start {
-        set_auto_start(config.auto_start);
+        set_auto_start(&app, config.auto_start);
     }
     save_config(&app, &config);
     OpResult {
