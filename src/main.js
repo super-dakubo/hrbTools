@@ -2396,41 +2396,136 @@ function dismissNotification(bannerId) {
 }
 
 function renderBanners() {
-    var area = document.getElementById('bannerArea');
-    if (!area) return;
     var banners = currentConfig.banners || [];
-    var maxShow = 2;
-    var visible = banners.slice(0, maxShow);
-    var hiddenCount = banners.length - maxShow;
-    area.innerHTML = '';
-    if (banners.length === 0) {
-        area.classList.remove('has-banners');
+    var container = document.getElementById('bannerArea');
+    if (!container) return;
+
+    // 清理已消失横幅的定时器
+    var activeIds = {};
+    banners.forEach(function(b) { activeIds[b.id] = true; });
+    Object.keys(_notificationTimers).forEach(function(id) {
+        if (!activeIds[id]) {
+            clearTimeout(_notificationTimers[id]);
+            delete _notificationTimers[id];
+        }
+    });
+
+    // 移除已超时的 auto_dismiss 横幅
+    var now = Date.now();
+    var changed = false;
+    banners = banners.filter(function(b) {
+        if (!b.auto_dismiss) return true;
+        if (b.level === 'Success' && now - b.created_at > 30000) { changed = true; return false; }
+        if (b.level === 'Info' && now - b.created_at > 300000) { changed = true; return false; }
+        if (b.level === 'Warning' && now - b.created_at > 7200000) { changed = true; return false; }
+        return true;
+    });
+    if (changed) {
+        currentConfig.banners = banners;
+        saveConfigToBackend();
+    }
+
+    // 去重合并：同 source + 同 title 合并
+    var merged = {};
+    banners.forEach(function(b) {
+        var key = b.source + '|' + b.title;
+        if (merged[key]) {
+            merged[key].count = (merged[key].count || 1) + 1;
+        } else {
+            merged[key] = { banner: b, count: 1 };
+        }
+    });
+    var deduped = [];
+    for (var k in merged) { deduped.push(merged[k]); }
+
+    // 最多显示 3 条 Toast
+    var maxShow = 3;
+    var visible = deduped.slice(0, maxShow);
+    var hiddenCount = deduped.length - maxShow;
+
+    container.innerHTML = '';
+    if (deduped.length === 0) {
+        container.style.display = 'none';
         return;
     }
-    area.classList.add('has-banners');
-    visible.forEach(function(item) {
-        var row = document.createElement('div');
-        row.className = 'banner-item';
-        var span = document.createElement('span');
-        span.textContent = item.title || '';
-        row.appendChild(span);
-        var btn = document.createElement('button');
-        btn.className = 'banner-item-close';
-        btn.innerHTML = '&times;';
-        btn.addEventListener('click', function() {
-            currentConfig.banners = currentConfig.banners.filter(function(b) { return b.id !== item.id; });
-            saveConfigToBackend();
-            renderBanners();
-        });
-        row.appendChild(btn);
-        area.appendChild(row);
-    });
+    container.style.display = 'flex';
+
+    // 超出 3 条的汇总提示
     if (hiddenCount > 0) {
-        var more = document.createElement('div');
-        more.style.cssText = 'text-align:center;padding:4px;font-size:0.75rem;color:var(--text-secondary);';
-        more.textContent = '还有 ' + hiddenCount + ' 条提醒';
-        area.appendChild(more);
+        var summary = document.createElement('div');
+        summary.className = 'toast-summary';
+        summary.textContent = '还有 ' + hiddenCount + ' 条通知';
+        summary.addEventListener('click', function() {
+            var bell = document.getElementById('notificationBell');
+            if (bell) bell.click();
+        });
+        container.appendChild(summary);
     }
+
+    visible.forEach(function(item) {
+        var b = item.banner;
+        var el = document.createElement('div');
+        el.className = 'toast-item toast-' + b.level.toLowerCase();
+        el.dataset.bannerId = b.id;
+
+        // 来源标签
+        var sourceBadge = document.createElement('span');
+        sourceBadge.className = 'toast-source';
+        sourceBadge.textContent = b.source;
+        el.appendChild(sourceBadge);
+
+        // 标题
+        var titleEl = document.createElement('span');
+        titleEl.className = 'toast-title';
+        titleEl.textContent = b.title + (item.count > 1 ? ' (×' + item.count + ')' : '');
+        el.appendChild(titleEl);
+
+        // 关闭按钮
+        var closeBtn = document.createElement('button');
+        closeBtn.className = 'toast-close';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            dismissNotification(b.id);
+        });
+        el.appendChild(closeBtn);
+
+        // 自动消失倒计时提示
+        if (b.auto_dismiss && b.level !== 'Error') {
+            var timeEl = document.createElement('div');
+            timeEl.className = 'toast-timer';
+            var remaining = getRemainingSec(b);
+            if (remaining > 0) {
+                timeEl.textContent = remaining + ' 秒后自动消失';
+            }
+            el.appendChild(timeEl);
+        }
+
+        // hover 暂停倒计时
+        el.addEventListener('mouseenter', function() {
+            if (_notificationTimers[b.id]) {
+                clearTimeout(_notificationTimers[b.id]);
+                delete _notificationTimers[b.id];
+            }
+        });
+        el.addEventListener('mouseleave', function() {
+            startDismissTimer(b);
+        });
+
+        container.appendChild(el);
+
+        // 新通知启动定时器
+        if (!_notificationTimers[b.id]) {
+            startDismissTimer(b);
+        }
+    });
+}
+
+function getRemainingSec(banner) {
+    var timeoutMs = DISMISS_TIMES[banner.level] || 300000;
+    var elapsed = Date.now() - banner.created_at;
+    var remaining = Math.max(0, Math.ceil((timeoutMs - elapsed) / 1000));
+    return remaining;
 }
 
 // ==================== 启动 ====================
