@@ -2551,9 +2551,18 @@ fn reminder_thread(app_handle: tauri::AppHandle) {
                 unsafe { Beep(880, 200); }
             }
 
-            // 写入横幅
-            push_notification(&app_handle, NotificationLevel::Info, "提醒",
-                &format!("⏰ {}", reminder.text), "");
+            // 写入横幅（直接推入本地 config，随后续 save_config 一起持久化）
+            config.banners.push(BannerEntry {
+                id: format!("notif_{}", std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()),
+                level: NotificationLevel::Info,
+                source: "提醒".to_string(),
+                title: format!("⏰ {}", reminder.text),
+                message: String::new(),
+                created_at: chrono::Utc::now().timestamp_millis(),
+                auto_dismiss: true,
+                read: false,
+            });
 
             // 周期任务推期
             if let Some(ref repeat) = reminder.repeat {
