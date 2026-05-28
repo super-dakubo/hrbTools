@@ -2,7 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **修改代码前必须先读 [LESSONS.md](./docs/LESSONS.md)** — 本项目反复踩过的坑。
+> **修改代码前必须先读 [LESSONS.md](C:\Users\PC_WIN10\.claude\docs\LESSONS.md)** — 本项目反复踩过的坑。
+**集成外部 API 前必须读 LESSONS.md「外部 API 集成」章节** — 先写 Spike 验证可行性，不猜 API 行为。
 > **README 截图见 [screenshots/](./screenshots/) 目录**。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
 > **处理特定功能时先查 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节** — 数据结构、命令列表、持久化、DST、备份、窗口等详细参考。

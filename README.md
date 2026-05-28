@@ -62,7 +62,7 @@ src/
 docs/
   ARCHITECTURE.md  数据结构、命令列表、持久化等详细参考
   design-system.md 颜色令牌、排版、组件标准、主题规则
-  LESSONS.md       项目踩坑记录
+  ~/.claude/docs/LESSONS.md  项目踩坑记录（全局管理）
 
 screenshots/       截图和演示 GIF
 ```
