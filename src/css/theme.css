@@ -1,0 +1,106 @@
+/* ==================== 主题变量 ==================== */
+:root {
+  /* 颜色 — 暗色模式 */
+  --bg: #0e1217;
+  --bg-alt: #11151c;
+  --surface: rgba(255,255,255,0.07);
+  --surface-hover: rgba(255,255,255,0.10);
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+  --text: rgba(255,255,255,0.90);
+  --text-secondary: rgba(255,255,255,0.58);
+  --text-muted: rgba(255,255,255,0.33);
+  --text-dim: rgba(255,255,255,0.16);
+  --input-bg: rgba(255,255,255,0.06);
+  --titlebar-bg: rgba(0,0,0,0.35);
+  --tab-bar-bg: rgba(0,0,0,0.18);
+  --accent: #4b8bf4;
+  --accent-hover: #5f9cf7;
+  --accent-rgb: 75, 139, 244;
+  --danger-bg: rgba(239,68,68,0.12);
+  --danger-text: #f87171;
+  --danger-border: rgba(239,68,68,0.2);
+  --success-bg: rgba(34,197,94,0.12);
+  --success-text: #86efac;
+  --error-bg: rgba(239,68,68,0.12);
+  --error-text: #fca5a5;
+  --pin-color: #fbbf24;
+  --log-error: #ff4444;
+  --log-warn: #ffaa00;
+  --log-perf: #44aaff;
+  --scrollbar-thumb: rgba(255,255,255,0.08);
+  --scrollbar-thumb-hover: rgba(255,255,255,0.14);
+  --shadow: rgba(0,0,0,0.5);
+  --holiday-accent: 139, 92, 246;
+
+  /* 玻璃拟态 */
+  --glass-bg: rgba(255,255,255,0.07);
+  --glass-border: rgba(255,255,255,0.08);
+  --radius-glass: 14px;
+
+  /* 排版 */
+  --font-xs: 0.65rem;
+  --font-sm: 0.78rem;
+  --font-base: 0.85rem;
+  --font-md: 0.95rem;
+  --font-lg: 1.15rem;
+  --font-xl: 1.4rem;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 20px;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 10px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  --transition: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.light {
+  --bg: #f0f2f6;
+  --bg-alt: #e6e8ee;
+  --surface: rgba(255,255,255,0.55);
+  --surface-hover: rgba(0,0,0,0.06);
+  --border: rgba(0,0,0,0.07);
+  --border-strong: rgba(0,0,0,0.12);
+  --text: rgba(0,0,0,0.87);
+  --text-secondary: rgba(0,0,0,0.55);
+  --text-muted: rgba(0,0,0,0.35);
+  --text-dim: rgba(0,0,0,0.18);
+  --input-bg: #fff;
+  --titlebar-bg: rgba(255,255,255,0.7);
+  --tab-bar-bg: rgba(255,255,255,0.3);
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-rgb: 59, 130, 246;
+  --holiday-accent: 139, 92, 246;
+  --danger-bg: rgba(220,38,38,0.08);
+  --danger-text: #dc2626;
+  --danger-border: rgba(220,38,38,0.25);
+  --success-bg: rgba(22,163,74,0.08);
+  --success-text: #16a34a;
+  --error-bg: rgba(220,38,38,0.08);
+  --error-text: #dc2626;
+  --scrollbar-thumb: rgba(0,0,0,0.10);
+  --scrollbar-thumb-hover: rgba(0,0,0,0.18);
+  --shadow: rgba(0,0,0,0.08);
+
+  --glass-bg: rgba(255,255,255,0.4);
+  --glass-border: rgba(0,0,0,0.07);
+  --radius-glass: 14px;
+
+  background: linear-gradient(135deg, #e2e6ee 0%, #eef1f6 45%, #e6eaf2 100%);
+}
+
+body.light .container {
+  background: radial-gradient(ellipse at 20% 50%, rgba(255,255,255,0.5) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 20%, rgba(13,148,136,0.04) 0%, transparent 50%);
+}
+

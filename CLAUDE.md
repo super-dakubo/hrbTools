@@ -39,7 +39,7 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 | 文件 | 说明 |
 |------|------|
 | [src/index.html](src/index.html) | HTML 骨架，6 面板 DOM + 10 个有序 `<script>` 加载 |
-| [src/styles.css](src/styles.css) | CSS 变量主题系统（暗色/亮色）+ 全部组件样式 |
+| [src/css/](src/css/) | CSS 变量主题 + 布局 + 组件 + 面板样式（4 文件） |
 | [src/core.js](src/core.js) | 前端基础设施：状态、DOM 引用、Tab 栏、配置管理、工具函数 |
 | [src/init.js](src/init.js) | `DOMContentLoaded` 分步启动 |
 | [src/js/](src/js/) | 面板 JS（8 文件）：convert/backup/todo/notifications/screenshot/log/settings + event-delegation |
@@ -108,7 +108,7 @@ main.rs ← 入口 + setup + 提醒线程 + 窗口/时区命令
 
 ### 备份目录结构
 
-```
+```text
 {backup_root}/{game_id}/{slot_id}/{timestamp_folder_name}/
 ├── meta.json    ← files 映射、hash、display_name
 ├── save.dat     ← 源文件（1 到 N 个）
