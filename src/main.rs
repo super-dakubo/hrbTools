@@ -9,19 +9,9 @@ use tauri::Manager;
 
 mod app_config;
 use app_config::*;
-mod tz;
-use tz::*;
-mod config_io;
-use config_io::*;
-mod holiday;
-use holiday::*;
-mod time_convert;
-mod file_dialog;
-mod notification;
-mod log;
-mod hash;
-mod screenshot;
-mod backup;
+mod svc;
+use svc::*;
+mod cmd;
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" {
@@ -419,41 +409,41 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            time_convert::convert_to_timestamp,
-            time_convert::convert_to_datetime,
+            cmd::time_convert::convert_to_timestamp,
+            cmd::time_convert::convert_to_datetime,
             get_config,
             set_config,
             get_holiday_data,
             save_holiday_data,
-            file_dialog::pick_file,
-            file_dialog::pick_directory,
-            backup::create_backup,
-            backup::list_backups,
-            backup::delete_backup,
-            backup::rename_backup,
-            backup::restore_backup,
-            hash::compute_hash,
-            backup::recompute_backup_hash,
-            backup::toggle_backup_pin,
-            backup::toggle_game_pin,
-            backup::open_folder,
+            cmd::file_dialog::pick_file,
+            cmd::file_dialog::pick_directory,
+            cmd::backup::create_backup,
+            cmd::backup::list_backups,
+            cmd::backup::delete_backup,
+            cmd::backup::rename_backup,
+            cmd::backup::restore_backup,
+            cmd::hash::compute_hash,
+            cmd::backup::recompute_backup_hash,
+            cmd::backup::toggle_backup_pin,
+            cmd::backup::toggle_game_pin,
+            cmd::backup::open_folder,
             add_timezone_set,
             remove_timezone_set,
             update_timezone_set,
             toggle_timezone_pin,
-            notification::send_notification,
+            cmd::notification::send_notification,
             window_minimize,
             window_toggle_maximize,
             window_close,
-            log::log_write,
-            log::open_log_folder,
-            log::read_today_logs,
-            screenshot::scan_screenshots,
-            screenshot::get_screenshot_base64_batch,
-            screenshot::detect_screenshot_sources,
-            screenshot::add_screenshot_source,
-            screenshot::remove_screenshot_source,
-            screenshot::delete_screenshot,
+            cmd::log::log_write,
+            cmd::log::open_log_folder,
+            cmd::log::read_today_logs,
+            cmd::screenshot::scan_screenshots,
+            cmd::screenshot::get_screenshot_base64_batch,
+            cmd::screenshot::detect_screenshot_sources,
+            cmd::screenshot::add_screenshot_source,
+            cmd::screenshot::remove_screenshot_source,
+            cmd::screenshot::delete_screenshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -462,8 +452,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use screenshot::is_image_file;
-    use backup::sanitize_path_component;
+    use cmd::screenshot::is_image_file;
+    use cmd::backup::sanitize_path_component;
 
     // ==================== sanitize_path_component ====================
 

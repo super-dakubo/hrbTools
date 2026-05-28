@@ -3,8 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 use crate::app_config::{AppConfig, OpResult};
-use crate::config_io::{load_config, save_config, log_info, log_error};
-use crate::hash::{compute_single_hash, compute_file_hash};
+use crate::svc::config_io::{load_config, save_config, log_info, log_error};
+use crate::cmd::hash::{compute_single_hash, compute_file_hash};
 
 // @Entity 备份元数据
 #[derive(Debug, Serialize, Deserialize, Clone)]

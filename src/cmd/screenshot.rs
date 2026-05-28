@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::collections::HashMap;
 use base64::Engine;
 use crate::app_config::{ScreenshotEntry, DetectedSource, ScreenshotSource, OpResult};
-use crate::config_io::{load_config, save_config, log_info};
+use crate::svc::config_io::{load_config, save_config, log_info};
 
 const IMAGE_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
