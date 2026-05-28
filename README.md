@@ -54,15 +54,16 @@ cargo build
 
 ```
 src/
-  index.html      HTML 骨架，6 面板（时间转换/备份/待办/截图/日志/设置）
-  styles.css      CSS 变量主题（暗色/亮色）+ 全部样式
-  main.js         全部前端逻辑，// === 分隔为 6 面板区块
-  main.rs         全部 Rust 逻辑，~30 个 Tauri 命令
+  index.html + styles.css   入口 + 全部样式
+  core.js + init.js         基础设施 + 启动
+  js/      8 面板 JS（panel-* + event-delegation）
+  main.rs + app_config.rs   入口 + 数据结构
+  cmd/     7 Tauri 命令模块（backup, hash, screenshot...）
+  svc/     3 业务逻辑模块（tz, config_io, holiday）
 
 docs/
   ARCHITECTURE.md  数据结构、命令列表、持久化等详细参考
   design-system.md 颜色令牌、排版、组件标准、主题规则
-  ~/.claude/docs/LESSONS.md  项目踩坑记录（全局管理）
 
 screenshots/       截图和演示 GIF
 ```
