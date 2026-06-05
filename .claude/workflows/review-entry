@@ -213,3 +213,119 @@ async function reviewRustSecurity(targetFiles) {
     return { findings: [{ severity: 'error', file: 'system', message: `rust-security agent failed: ${err.message}` }] }
   }
 }
+
+phase('Review')
+
+const filesByExt = {}
+for (const f of filesToCheck) {
+  const dot = f.lastIndexOf('.')
+  const ext = dot >= 0 ? f.slice(dot) : ''
+  if (!filesByExt[ext]) filesByExt[ext] = []
+  filesByExt[ext].push(f)
+}
+
+const agentMap = {
+  'rust-correctness': () => reviewRustCorrectness([...(filesByExt['.rs'] || [])]),
+  'js-correctness': () => reviewJsCorrectness([...(filesByExt['.js'] || [])]),
+  'arch-check': () => reviewArchCheck(filesToCheck),
+  'css-stability': () => reviewCssStability([...(filesByExt['.css'] || [])]),
+  'dead-code': () => reviewDeadCode(),
+  'rust-security': () => reviewRustSecurity([...(filesByExt['.rs'] || [])]),
+}
+
+const results = await parallel(
+  dimensionList.map(dim => () =>
+    agentMap[dim]()
+      .then(result => ({ dimension: dim, status: 'ok', findings: result.findings }))
+      .catch(err => ({ dimension: dim, status: 'failed', findings: [], error: err.message }))
+  )
+)
+
+phase('Synthesize')
+
+const allFindings = results
+  .filter(r => r && r.status === 'ok')
+  .flatMap(r => r.findings.map(f => ({ ...f, dimension: r.dimension })))
+
+const seen = new Set()
+const deduped = allFindings.filter(f => {
+  const key = `${f.file}:${f.line}:${f.message}`
+  if (seen.has(key)) return false
+  seen.add(key)
+  return true
+})
+
+const severityOrder = { error: 0, warning: 1, info: 2 }
+deduped.sort((a, b) => (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9))
+
+const errorCount = deduped.filter(f => f.severity === 'error').length
+const warningCount = deduped.filter(f => f.severity === 'warning').length
+const infoCount = deduped.filter(f => f.severity === 'info').length
+
+const failedDims = results.filter(r => r.status === 'failed').map(r => r.dimension)
+
+const date = new Date()
+const dateStr = date.toISOString().slice(0, 10)
+const weekNum = Math.ceil((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / 604800000)
+const weekStr = `W${String(weekNum).padStart(2, '0')}`
+const filename = isFullAudit ? `audit-${date.getFullYear()}-${weekStr}.md` : `review-${dateStr}.md`
+const filepath = `docs/reviews/${filename}`
+
+const reportLines = [
+  `# Review: ${dateStr}`,
+  '',
+  `> 模式: ${mode}`,
+  `> 触发: 手动`,
+  `> 文件: ${filesToCheck.length}`,
+  `> 维度: ${dimensionList.join(', ')}`,
+  '',
+]
+
+const byDim = {}
+for (const f of deduped) {
+  if (!byDim[f.dimension]) byDim[f.dimension] = []
+  byDim[f.dimension].push(f)
+}
+
+for (const [dim, findings] of Object.entries(byDim)) {
+  const dimName = dim.charAt(0).toUpperCase() + dim.slice(1).replace(/-/g, ' ')
+  reportLines.push(`## ${dimName}`)
+  reportLines.push('')
+  for (const f of findings) {
+    const icon = f.severity === 'error' ? '❌' : f.severity === 'warning' ? '⚠️' : 'ℹ️'
+    reportLines.push(`- ${icon} [${f.severity}] ${f.file}:${f.line} — ${f.message}`)
+    if (f.suggestion) reportLines.push(`  - 建议: ${f.suggestion}`)
+  }
+  reportLines.push('')
+}
+
+if (failedDims.length > 0) {
+  reportLines.push('## 失败的维度')
+  reportLines.push('')
+  failedDims.forEach(d => reportLines.push(`- ❌ [failed] ${d} — 审查未完成`))
+  reportLines.push('')
+}
+
+reportLines.push('## 总结')
+reportLines.push('')
+reportLines.push(`- ❌ 严重: ${errorCount} | ⚠️ 警告: ${warningCount} | ℹ️ 信息: ${infoCount}`)
+if (failedDims.length > 0) reportLines.push(`- ❌ 失败维度: ${failedDims.length}`)
+
+const reportContent = reportLines.join('\n')
+
+await agent(
+  `将以下内容写入文件 ${filepath}:\n\n${reportContent}`,
+  { label: 'write-report', phase: 'Synthesize' }
+)
+
+log(`报告已写入: ${filepath}`)
+
+return {
+  mode,
+  filepath,
+  total: deduped.length,
+  errors: errorCount,
+  warnings: warningCount,
+  infos: infoCount,
+  failed: failedDims,
+}
