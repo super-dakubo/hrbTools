@@ -293,11 +293,20 @@ const infoCount = deduped.filter(f => f.severity === 'info').length
 
 const failedDims = results.filter(r => r.status === 'failed').map(r => r.dimension)
 
-const date = new Date()
-const dateStr = date.toISOString().slice(0, 10)
-const weekNum = Math.ceil((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / 604800000)
-const weekStr = `W${String(weekNum).padStart(2, '0')}`
-const filename = isFullAudit ? `audit-${date.getFullYear()}-${weekStr}.md` : `review-${dateStr}.md`
+// 日期由 args 传入或从 agent 获取（Workflow 脚本禁止 Date.now/new Date()）
+let dateStr, weekStr
+if (args?.date && args?.week) {
+  dateStr = args.date
+  weekStr = args.week
+} else {
+  const dateInfo = await agent(
+    '返回今天的 YYYY-MM-DD 格式日期和 ISO 周数（如 W23）',
+    { label: 'get-date', phase: 'Synthesize', schema: { type: 'object', properties: { date: { type: 'string' }, week: { type: 'string' } }, required: ['date', 'week'] } }
+  )
+  dateStr = dateInfo.date
+  weekStr = dateInfo.week
+}
+const filename = isFullAudit ? `audit-${dateStr.slice(0, 4)}-${weekStr}.md` : `review-${dateStr}.md`
 const filepath = `docs/reviews/${filename}`
 
 const reportLines = [
