@@ -26,24 +26,31 @@ const mode = isFullAudit ? 'audit' : 'incremental'
 phase('Route')
 
 let filesToCheck = []
-let diffSummary = ''
 
 if (isFullAudit) {
-  const allFiles = (await agent(
-    `列出 src/ 下所有源文件（.rs/.js/.css/.html），每行一个路径`,
-    { label: 'list-sources', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } }
-  )).files
-  filesToCheck = allFiles
-  diffSummary = `全量审计: ${filesToCheck.length} 个文件`
-  log(`全量审计: ${filesToCheck.length} 个文件`)
+  try {
+    const allFiles = (await agent(
+      `列出 src/ 下所有源文件（.rs/.js/.css/.html），每行一个路径`,
+      { label: 'list-sources', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } }
+    )).files
+    filesToCheck = allFiles
+    log(`全量审计: ${filesToCheck.length} 个文件`)
+  } catch (err) {
+    log(`全量模式文件列表获取失败: ${err}`)
+    return { mode, status: 'error', reason: `文件列表获取失败: ${err}` }
+  }
 } else {
-  const diff = await agent(
-    `运行 git diff HEAD --stat 和 git diff HEAD 的前 2000 字符，返回 diff 涉及的变更文件列表和摘要`,
-    { label: 'get-diff', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }, required: ['files', 'summary'] } }
-  )
-  filesToCheck = diff.files
-  diffSummary = diff.summary
-  log(`增量审查: ${filesToCheck.length} 个文件变更`)
+  try {
+    const diff = await agent(
+      `运行 git diff HEAD --stat 和 git diff HEAD 的前 2000 字符，返回 diff 涉及的变更文件列表和摘要`,
+      { label: 'get-diff', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }, required: ['files', 'summary'] } }
+    )
+    filesToCheck = diff.files
+    log(`增量审查: ${filesToCheck.length} 个文件变更`)
+  } catch (err) {
+    log(`增量模式 diff 获取失败: ${err}`)
+    return { mode, status: 'error', reason: `diff 获取失败: ${err}` }
+  }
 }
 
 const extensions = new Set(filesToCheck.map(f => {
