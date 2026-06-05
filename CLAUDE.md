@@ -2,8 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **修改代码前必须先读 [LESSONS.md](C:\Users\PC_WIN10\.claude\docs\LESSONS.md)** — 本项目反复踩过的坑。
-**集成外部 API 前必须读 LESSONS.md「外部 API 集成」章节** — 先写 Spike 验证可行性，不猜 API 行为。
+> **修改代码前必须先读 [LESSONS.md](C:\Users\PC_WIN10.claude\docs\LESSONS.md)** — 本项目反复踩过的坑。
+> **集成外部 API 前必须读 LESSONS.md「外部 API 集成」章节** — 先写 Spike 验证可行性，不猜 API 行为。
 > **UI/样式修改前必须阅读 [docs/design-system.md](./docs/design-system.md)** — 颜色令牌、排版、组件标准、主题规则。
 > **处理特定功能时先查 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) 对应章节** — 数据结构、命令列表、持久化、DST、备份、窗口等详细参考。
 >
@@ -13,6 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - `backup-operations` — 备份系统操作规范
 > - `tauri-command-pattern` — 添加新 Tauri 命令
 > - `id-based-entities` — 添加可改名实体时用 ID 关联
+>
+> **多子代理审查系统**位于 `.claude/workflows/review-entry` — 用 Workflow 工具执行。增量审查：直接运行。全量审计：传 `{"mode": "audit"}` 参数。
 >
 > **自动记忆系统**位于 `C:\Users\PC_WIN10\.claude\projects\d--code-hello-world\memory\` — 跨会话持久化。
 
@@ -25,6 +27,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cargo test` – 运行 40+ 单元测试（覆盖时区/节假日/哈希/路径校验/图片检测）
 - `gh release create v0.1.0 target/release/bundle/nsis/*.exe target/release/bundle/msi/*.msi` – 发布新版本
 - `taskkill /im tauri_dev.exe /f` – 强制终止 dev 进程（开发时常用）
+- Workflow `scriptPath=".claude/workflows/review-entry"` – 运行多子代理增量审查
+- Workflow `scriptPath=".claude/workflows/review-entry"` + `args={"mode":"audit"}` – 全量审计
 
 ## 架构概述
 
@@ -36,19 +40,19 @@ Tauri 2.0 桌面应用（**仅 Windows**），无 npm/打包器，纯原生 HTML
 
 ### 源文件一览
 
-| 文件 | 说明 |
-|------|------|
-| [src/index.html](src/index.html) | HTML 骨架，6 面板 DOM + 10 个有序 `<script>` 加载 |
-| [src/css/](src/css/) | CSS 变量主题 + 布局 + 组件 + 面板样式（4 文件） |
-| [src/core.js](src/core.js) | 前端基础设施：状态、DOM 引用、Tab 栏、配置管理、工具函数 |
-| [src/init.js](src/init.js) | `DOMContentLoaded` 分步启动 |
-| [src/js/](src/js/) | 面板 JS（8 文件）：convert/backup/todo/notifications/screenshot/log/settings + event-delegation |
-| [src/main.rs](src/main.rs) | Rust 入口：main()、setup、提醒线程、窗口命令、时区命令 |
-| [src/app_config.rs](src/app_config.rs) | 全部 `AppConfig` 数据结构 + 默认值 |
-| [src/cmd/](src/cmd/) | Tauri 命令模块（7 文件）：backup、hash、screenshot、time_convert、file_dialog、notification、log |
-| [src/svc/](src/svc/) | 业务逻辑模块（3 文件）：tz（时区/DST）、config_io（持久化）、holiday（节假日判定） |
-| [icons/](icons/) | App/托盘图标。重构时运行 `python tools/gen_icon.py` |
-| [tools/gen_icon.py](tools/gen_icon.py) | 纯 Python 图标生成脚本（stdlib 无依赖） |
+| 文件                                   | 说明                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [src/index.html](src/index.html)       | HTML 骨架，6 面板 DOM + 10 个有序 `<script>` 加载                                                |
+| [src/css/](src/css/)                   | CSS 变量主题 + 布局 + 组件 + 面板样式（4 文件）                                                  |
+| [src/core.js](src/core.js)             | 前端基础设施：状态、DOM 引用、Tab 栏、配置管理、工具函数                                         |
+| [src/init.js](src/init.js)             | `DOMContentLoaded` 分步启动                                                                      |
+| [src/js/](src/js/)                     | 面板 JS（8 文件）：convert/backup/todo/notifications/screenshot/log/settings + event-delegation  |
+| [src/main.rs](src/main.rs)             | Rust 入口：main()、setup、提醒线程、窗口命令、时区命令                                           |
+| [src/app_config.rs](src/app_config.rs) | 全部 `AppConfig` 数据结构 + 默认值                                                               |
+| [src/cmd/](src/cmd/)                   | Tauri 命令模块（7 文件）：backup、hash、screenshot、time_convert、file_dialog、notification、log |
+| [src/svc/](src/svc/)                   | 业务逻辑模块（3 文件）：tz（时区/DST）、config_io（持久化）、holiday（节假日判定）               |
+| [icons/](icons/)                       | App/托盘图标。重构时运行 `python tools/gen_icon.py`                                              |
+| [tools/gen_icon.py](tools/gen_icon.py) | 纯 Python 图标生成脚本（stdlib 无依赖）                                                          |
 
 ### AppConfig 持久化
 
