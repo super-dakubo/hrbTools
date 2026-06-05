@@ -233,8 +233,13 @@ const agentMap = {
   'rust-security': () => reviewRustSecurity([...(filesByExt['.rs'] || [])]),
 }
 
+const skippedDims = dimensionList.filter(dim => !(dim in agentMap))
+if (skippedDims.length > 0) {
+  log(`跳过未实现维度的审查: ${skippedDims.join(', ')}`)
+}
+
 const results = await parallel(
-  dimensionList.map(dim => () =>
+  dimensionList.filter(dim => dim in agentMap).map(dim => () =>
     agentMap[dim]()
       .then(result => ({ dimension: dim, status: 'ok', findings: result.findings }))
       .catch(err => ({ dimension: dim, status: 'failed', findings: [], error: err.message }))
