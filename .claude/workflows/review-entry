@@ -224,8 +224,32 @@ for (const f of filesToCheck) {
   filesByExt[ext].push(f)
 }
 
+// 全量审计：大文件组分批，防 token 爆炸
+if (isFullAudit) {
+  const rsFiles = filesByExt['.rs'] || []
+  const jsFiles = filesByExt['.js'] || []
+
+  if (rsFiles.length > 0) {
+    const rsBatch1 = rsFiles.filter(f => f.includes('/cmd/'))
+    const rsBatch2 = rsFiles.filter(f => !f.includes('/cmd/'))
+    if (rsBatch1.length > 0) filesByExt['.rs-batch-1'] = rsBatch1
+    if (rsBatch2.length > 0) filesByExt['.rs-batch-2'] = rsBatch2
+    delete filesByExt['.rs']
+  }
+
+  if (jsFiles.length > 0) {
+    const jsBatch1 = jsFiles.filter(f => f.includes('core.') || f.includes('init.'))
+    const jsBatch2 = jsFiles.filter(f => !f.includes('core.') && !f.includes('init.'))
+    if (jsBatch1.length > 0) filesByExt['.js-batch-1'] = jsBatch1
+    if (jsBatch2.length > 0) filesByExt['.js-batch-2'] = jsBatch2
+    delete filesByExt['.js']
+  }
+
+  log(`全量审计分批: rs(${rsFiles.length}), js(${jsFiles.length})`)
+}
+
 const agentMap = {
-  'rust-correctness': () => reviewRustCorrectness([...(filesByExt['.rs'] || [])]),
+  'rust-correctness': () => reviewRustCorrectness([...(filesByExt['.rs-batch-1'] || filesByExt['.rs-batch-2'] || filesByExt['.rs'] || [])]),
   'js-correctness': () => reviewJsCorrectness([...(filesByExt['.js'] || [])]),
   'arch-check': () => reviewArchCheck(filesToCheck),
   'css-stability': () => reviewCssStability([...(filesByExt['.css'] || [])]),
