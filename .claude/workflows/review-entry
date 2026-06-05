@@ -1,0 +1,26 @@
+export const meta = {
+  name: 'review-entry',
+  description: '多子代理审查系统入口 — 增量审查或全量审计',
+  phases: [
+    { title: 'Route', detail: '分析 diff/文件列表，确定审查维度' },
+    { title: 'Review', detail: '各维度并行审查' },
+    { title: 'Synthesize', detail: '合并结果写入文件' },
+  ],
+}
+
+// 路由规则表 — 扩展加一行即可
+const ROUTE_MAP = {
+  '.rs':   ['rust-correctness', 'arch-check'],
+  '.js':   ['js-correctness', 'arch-check'],
+  '.css':  ['css-stability'],
+  '.html': ['html-structure'],
+}
+
+// 全量审计额外维度（低优先级）
+const FULL_AUDIT_DIMENSIONS = ['rust-security', 'dead-code', 'rust-perf']
+
+// 模式检测
+const isFullAudit = args?.mode === 'audit'
+const mode = isFullAudit ? 'audit' : 'incremental'
+
+log(`模式: ${mode}`)
