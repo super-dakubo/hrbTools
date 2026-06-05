@@ -23,4 +23,48 @@ const FULL_AUDIT_DIMENSIONS = ['rust-security', 'dead-code', 'rust-perf']
 const isFullAudit = args?.mode === 'audit'
 const mode = isFullAudit ? 'audit' : 'incremental'
 
-log(`模式: ${mode}`)
+phase('Route')
+
+let filesToCheck = []
+let diffSummary = ''
+
+if (isFullAudit) {
+  const allFiles = (await agent(
+    `列出 src/ 下所有源文件（.rs/.js/.css/.html），每行一个路径`,
+    { label: 'list-sources', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } } }, required: ['files'] } }
+  )).files
+  filesToCheck = allFiles
+  diffSummary = `全量审计: ${filesToCheck.length} 个文件`
+  log(`全量审计: ${filesToCheck.length} 个文件`)
+} else {
+  const diff = await agent(
+    `运行 git diff HEAD --stat 和 git diff HEAD 的前 2000 字符，返回 diff 涉及的变更文件列表和摘要`,
+    { label: 'get-diff', phase: 'Route', schema: { type: 'object', properties: { files: { type: 'array', items: { type: 'string' } }, summary: { type: 'string' } }, required: ['files', 'summary'] } }
+  )
+  filesToCheck = diff.files
+  diffSummary = diff.summary
+  log(`增量审查: ${filesToCheck.length} 个文件变更`)
+}
+
+const extensions = new Set(filesToCheck.map(f => {
+  const dot = f.lastIndexOf('.')
+  return dot >= 0 ? f.slice(dot) : ''
+}))
+
+let dimensions = new Set()
+for (const ext of extensions) {
+  const mapped = ROUTE_MAP[ext]
+  if (mapped) mapped.forEach(d => dimensions.add(d))
+}
+
+if (isFullAudit) {
+  FULL_AUDIT_DIMENSIONS.forEach(d => dimensions.add(d))
+}
+
+const dimensionList = [...dimensions]
+log(`匹配维度: ${dimensionList.join(', ')}`)
+
+if (dimensionList.length === 0) {
+  log('无可审维度，跳过审查')
+  return { mode, status: 'skipped', reason: '无可审维度' }
+}
