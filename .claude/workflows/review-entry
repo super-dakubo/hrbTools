@@ -75,3 +75,108 @@ if (dimensionList.length === 0) {
   log('无可审维度，跳过审查')
   return { mode, status: 'skipped', reason: '无可审维度' }
 }
+
+const FINDING_SCHEMA = {
+  type: 'object',
+  properties: {
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          severity: { type: 'string', enum: ['error', 'warning', 'info'] },
+          file: { type: 'string' },
+          line: { type: 'number' },
+          message: { type: 'string' },
+          suggestion: { type: 'string' },
+        },
+        required: ['severity', 'file', 'message'],
+      },
+    },
+  },
+  required: ['findings'],
+}
+
+async function reviewRustCorrectness(targetFiles) {
+  return agent(
+    `你审查 Rust 代码的正确性问题。只关注以下方面：
+1. unwrap()/expect()/panic!() 在 IO 或网络路径上
+2. 错误传播遗漏（? 或 match 缺失）
+3. 所有权/借用错误
+4. 空指针/悬垂引用风险
+
+文件列表: ${targetFiles.join(', ')}
+
+输出每个发现的问题，包含 severity（error/warning/info）、file、line、message、suggestion。`,
+    { label: 'rust-correctness', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
+
+async function reviewJsCorrectness(targetFiles) {
+  return agent(
+    `你审查 JavaScript 代码的正确性问题。只关注以下方面：
+1. DOM 操作错误（选择器不匹配、节点不存在）
+2. 事件委托违规（本项目用 data-action 模式）
+3. 全局状态污染（window.__ 命名空间冲突）
+4. 异步错误（未捕获 Promise reject）
+
+文件列表: ${targetFiles.join(', ')}
+
+输出每个发现的问题。`,
+    { label: 'js-correctness', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
+
+async function reviewArchCheck(targetFiles) {
+  return agent(
+    `你审查架构一致性。本项目架构规则：
+- Rust 分层：main.rs ← setup/main → svc/（业务）→ cmd/（Tauri 命令）
+- cmd/ 命令不得包含业务逻辑
+- svc/ 不得直接调用 Tauri API
+- JS 面板用事件委托，禁止 addEventListener 或 onclick=
+- 实体用 ID 关联（不可改名用名称）
+- 文件路径用 sanitize_path_component() 校验
+
+检查文件: ${targetFiles.join(', ')}
+
+输出违规问题。`,
+    { label: 'arch-check', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
+
+async function reviewCssStability(targetFiles) {
+  return agent(
+    `审查 CSS 稳定性问题：
+1. 选择器冲突（同名类但用途不同）
+2. 主题变量覆盖问题（硬编码色值替代 var(--xxx)）
+3. 冗余/未使用的 CSS 规则
+
+文件列表: ${targetFiles.join(', ')}`,
+    { label: 'css-stability', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
+
+async function reviewDeadCode() {
+  return agent(
+    `扫描整个项目查找：
+1. 未使用的函数/变量定义
+2. 重复的模块或逻辑
+3. 死注释（被注释掉的旧代码块）
+4. 遗留的 import/引用
+
+运行 grep 或直接分析文件内容。`,
+    { label: 'dead-code', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
+
+async function reviewRustSecurity(targetFiles) {
+  return agent(
+    `审查 Rust 代码安全问题：
+1. 路径遍历 — 用户输入未过 sanitize_path_component()
+2. IPC 注入 — Tauri command 参数校验不严
+3. 文件操作 — 未检查路径合法性
+
+文件列表: ${targetFiles.join(', ')}`,
+    { label: 'rust-security', phase: 'Review', schema: FINDING_SCHEMA }
+  )
+}
