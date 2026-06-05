@@ -249,12 +249,12 @@ const results = await parallel(
 phase('Synthesize')
 
 const allFindings = results
-  .filter(r => r && r.status === 'ok')
+  .filter(r => r && r.status === 'ok' && Array.isArray(r.findings))
   .flatMap(r => r.findings.map(f => ({ ...f, dimension: r.dimension })))
 
 const seen = new Set()
 const deduped = allFindings.filter(f => {
-  const key = `${f.file}:${f.line}:${f.message}`
+  const key = `${f.dimension}:${f.file}:${f.line}:${f.message}`
   if (seen.has(key)) return false
   seen.add(key)
   return true
