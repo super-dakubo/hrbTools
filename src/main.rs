@@ -356,9 +356,32 @@ fn reminder_thread(app_handle: tauri::AppHandle) {
     }
 }
 
+// @Setup 存放启动参数供命令查询
+struct StartupFlags {
+    minimized: bool,
+}
+
+// @Endpoint 前端就绪后调用此命令显示窗口，避免白屏
+#[tauri::command]
+fn show_main_window(app: tauri::AppHandle, flags: tauri::State<StartupFlags>) {
+    if !flags.minimized {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+}
+
 // @Setup 应用入口：托盘图标 → 窗口初始化 → 提醒线程
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // 再次点击图标时聚焦已有窗口
+            let _ = app.get_webview_window("main").map(|w| {
+                let _ = w.show();
+                let _ = w.set_focus();
+            });
+        }))
         .setup(|app| {
             // 系统托盘
             use tauri::tray::TrayIconBuilder;
@@ -368,14 +391,12 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-            // --minimized 参数：开机自启（带此参数）→隐藏到托盘，手动启动→显示窗口
+            // --minimized 参数：开机自启（带此参数）→隐藏到托盘
             let is_minimized = std::env::args().any(|a| a == "--minimized");
-            if !is_minimized {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
+            // 存储启动参数供 show_main_window 命令查询
+            app.manage(StartupFlags { minimized: is_minimized });
+            // 不再直接 show() — 由前端 init.js 完成后调用 show_main_window
+            // 这样保证内容已渲染，不会白屏
 
             let _tray = TrayIconBuilder::new()
                 .icon(tauri::image::Image::new_owned(include_bytes!("../icons/32x32.raw").to_vec(), 32, 32))
@@ -435,6 +456,7 @@ fn main() {
             window_minimize,
             window_toggle_maximize,
             window_close,
+            show_main_window,
             cmd::log::log_write,
             cmd::log::open_log_folder,
             cmd::log::read_today_logs,
